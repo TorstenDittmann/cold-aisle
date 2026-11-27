@@ -5,13 +5,14 @@ shader_type spatial;
 
 uniform float power = 1.0;        // 0 = rack is dark (power cut)
 uniform float led_gain = 2.2;
+uniform float seed = 0.0;         // differs per aisle so no two rows blink alike
 
 varying float rid;
 
 float h1(float n) { return fract(sin(n * 127.1) * 43758.5453); }
 
 void vertex() {
-	rid = float(INSTANCE_ID) + 1.0;
+	rid = float(INSTANCE_ID) + 1.0 + seed;
 }
 
 void fragment() {

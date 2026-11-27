@@ -47,7 +47,8 @@ func _ready() -> void:
 	camera.add_child(torch)
 
 
-func _unhandled_input(event: InputEvent) -> void:
+## Called by main.gd: the player lives inside a SubViewport, which does not receive input itself.
+func handle_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:

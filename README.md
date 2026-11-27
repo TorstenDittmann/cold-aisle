@@ -2,7 +2,7 @@
 
 A first-person horror game set in a data centre at night. Godot 4.7, Compatibility renderer, exported for the web.
 
-Current state: **milestone 0, the look test** — one walkable aisle of Data Hall A.
+Current state: **milestone 0, the look test** — Data Hall A, three cold aisles with cross corridors and hot aisles, rendered at low resolution with hard pixels.
 
 ## Run
 
@@ -10,7 +10,7 @@ Open the folder in Godot 4.7 and press Play, or from a terminal:
 
     godot --path .
 
-Controls: click to capture the mouse, WASD to move, Shift to jog, Ctrl to crouch, F for the torch, F3 for frame stats, Esc to release the mouse.
+Controls: click to capture the mouse, WASD to move, Shift to jog, Ctrl to crouch, F for the torch, [ and ] to change the pixel size, F3 for frame stats, Esc to release the mouse.
 
 ## Web build
 
@@ -20,7 +20,7 @@ The build is single-threaded, so it needs no special server headers. Zip the con
 
 ## Layout
 
-- `scripts/main.gd` assembles the aisle in code: shell, racks, overhead fibre, strip lights, mirror floor, lens and HUD.
+- `scripts/main.gd` assembles the hall in code inside a low-resolution SubViewport: shell, racks, overhead fibre, strip lights, mirror floor, lens and HUD.
 - `scripts/player.gd` is the first-person controller.
 - `shaders/rack_front.gdshader` draws every rack LED procedurally.
 - `shaders/floor.gdshader` is the glossy tile floor. Reflections come from a mirrored copy of the hall under it.
