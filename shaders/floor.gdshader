@@ -6,6 +6,7 @@ render_mode blend_mix, depth_draw_never, cull_back;
 
 uniform float aisle_half_width = 0.66;
 uniform float mirror = 0.6;
+uniform float aisle_x = 1000.0;   // centre line of the perforated tiles; far away = none
 varying vec3 wp;
 
 float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -22,7 +23,7 @@ void fragment() {
 	float mx = max(abs(f.x), abs(f.y));
 	float seam = smoothstep(0.487, 0.498, mx) * smoothstep(0.03, 0.005, px);
 	vec3 alb = vec3(0.15, 0.155, 0.16) * (0.85 + 0.3 * h2(ti));
-	float perf = step(abs(ti.x + 0.5), aisle_half_width / 0.6) * step(0.4, h2(ti + 3.0)) * step(mx, 0.43);
+	float perf = step(abs((ti.x + 0.5) * 0.6 - aisle_x), aisle_half_width) * step(0.4, h2(ti + 3.0)) * step(mx, 0.43);
 	vec2 hq = fract(wp.xz / 0.03) - 0.5;
 	float holes = smoothstep(0.34, 0.26, length(hq));
 	alb = mix(alb, alb * 0.75 * (1.0 - 0.8 * mix(0.4, holes, smoothstep(0.02, 0.006, px))), perf);

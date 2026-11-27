@@ -7,12 +7,19 @@ uniform float power = 1.0;        // 0 = rack is dark (power cut)
 uniform float led_gain = 2.2;
 uniform float seed = 0.0;         // differs per aisle so no two rows blink alike
 
+uniform float bar = 0.0;          // teal light bar down the door edge (Hall B)
+uniform float cage = 0.0;         // 1 = every LED is teal (Cage 7 equipment)
+uniform float pulse_z = -100.0;   // world z of the travelling pulse
+uniform float pulse_gain = 0.0;
+
 varying float rid;
+varying float wz;
 
 float h1(float n) { return fract(sin(n * 127.1) * 43758.5453); }
 
 void vertex() {
 	rid = float(INSTANCE_ID) + 1.0 + seed;
+	wz = (MODEL_MATRIX * vec4(VERTEX, 1.0)).z;
 }
 
 void fragment() {
@@ -76,6 +83,14 @@ void fragment() {
 		em *= mix(0.75, 0.6 + 0.4 * hole, near);
 		rough = 0.6;
 	}
+	em = mix(em, vec3(0.1, 0.9, 0.78) * dot(em, vec3(0.4)), cage);
+	// teal light bar on the door edge, with a slow idle wave and the story pulse
+	float inbar = step(0.272, u) * step(u, 0.298) * step(0.1, v) * step(v, 2.02);
+	float wave = 0.25 + 0.2 * sin(wz * 0.9 - TIME * 1.3);
+	float d = wz - pulse_z;
+	float pulse = pulse_gain * exp(-d * d * 1.6);
+	em += vec3(0.1, 0.9, 0.78) * inbar * bar * (wave + pulse * 4.0);
+	em += vec3(0.1, 0.9, 0.78) * pulse * 0.05 * bar;
 	ALBEDO = alb;
 	ROUGHNESS = rough;
 	METALLIC = 0.0;

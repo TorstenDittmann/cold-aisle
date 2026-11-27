@@ -1,82 +1,149 @@
 extends Node3D
-## The look test: Data Hall A, three cold aisles joined by cross corridors, assembled in code.
-## Dimensions follow the reference: 0.62 m racks, 2.2 m aisles, strip lights every 3.1 m.
+## Cold Aisle. This file is the frame around the game: the low-resolution 3D view and its
+## lens, the HUD, input, the title and pause screens, and the per-frame bookkeeping of
+## which room you are in. The building is built by build.gd; the night is run by story.gd.
 ##
 ## The 3D world is drawn into a small SubViewport and scaled up with hard pixels.
+## Text (handheld, consoles, prompts) is drawn at full resolution on top.
 
-const AISLES := 3
-const AISLE_PITCH := 5.44      # cold aisle to cold aisle; leaves a 1 m hot aisle between row backs
-const RACKS := 32              # per row
-const RACK_W := 0.62
-const RACK_H := 2.12
-const RACK_D := 1.12
-const ROW_X := 1.66            # row centre, measured from the aisle centre
-const FRONT_X := 1.1           # rack fronts face the aisle here
-const CEIL_Y := 3.28
-const STRIP_GAP := 3.1
-const END_PAD := 2.6           # depth of the cross corridor at each end
-const HALL_HALF_W := 9.0
-const STRIP_COLOUR := Color(0.82, 0.92, 1.0)
+const Kit := preload("res://scripts/build.gd")
 const PIXEL_ROWS: Array[int] = [180, 240, 300, 360, 540]
+const SETTINGS_PATH := "user://settings.cfg"
+const AMBER := Color(1.0, 0.7, 0.28)
+const INK := Color(0.93, 0.95, 0.97)
 
-var aisle_len: float
 var view: SubViewport
-var world: Node3D      # everything 3D lives under here, inside the SubViewport
-var visual: Node3D     # the part of the world that is also drawn mirrored in the floor
+var world: Node3D
+var kit: RefCounted
 var player: CharacterBody3D
+var story: Node
+var sound: Node
+var figure: Node3D
+var double: Node3D          # the technician the cameras show in Act 3
+var handheld: Control
+var terminal: Control
+var cctv: Control
 var post_mat: ShaderMaterial
-var hud_clock: Label
-var hud_hint: Label
-var hud_fps: Label
-var _clock_s := 22.0 * 3600.0
+var env: Environment
+
+var clock := 1320.0         # minutes since midnight of the day the shift began
+var room := ""
+var started := false
+var paused := false
+var hold := false           # a scripted moment is keeping the player still
+var test_mode := false
+
 var _rows_i := 1
-var _strip_lights: Array[OmniLight3D] = []
+var _show_all := false
+var _lid := 0.0
+var _mono: Font
+var _mono_light: Font
+var _hud: CanvasLayer
+var _reticle: ColorRect
+var _prompt: Label
+var _toast: Label
+var _toast_t := 0.0
+var _notify: Label
+var _notify_t := 0.0
+var _banner: Label
+var _card: Label
+var _card_t := 0.0
+var _fps: Label
+var _title: Control
+var _title_info: Label
+var _pause: Label
+var _ending: Control
+var _ending_text: RichTextLabel
+var _ending_ready := false
 
 
 func _ready() -> void:
-	aisle_len = RACKS * RACK_W
+	_mono = load("res://fonts/IBMPlexMono-Medium.ttf")
+	_mono_light = load("res://fonts/IBMPlexMono-Regular.ttf")
 	_setup_input()
 	_build_view()
 	_build_environment()
-	visual = Node3D.new()
-	world.add_child(visual)
-	_build_shell()
-	for a in AISLES:
-		_build_aisle(a)
-	_build_mirror()
+	sound = Node.new()
+	sound.set_script(load("res://scripts/sound.gd"))
+	add_child(sound)
+	kit = Kit.new()
+	kit.build(self, world)
 	_build_player()
 	_build_lens_and_hud()
+	story = Node.new()
+	story.set_script(load("res://scripts/story.gd"))
+	story.setup(self)
+	add_child(story)
+	_load_settings()
 	get_viewport().size_changed.connect(_fit_view)
 	_fit_view()
-	_apply_shot_args()
+	if not _apply_test_args():
+		_warm_up()
 
+
+func clock_text(t := -1.0) -> String:
+	var m := int(clock if t < 0.0 else t)
+	return "%02d:%02d" % [int(m / 60) % 24, m % 60]
+
+
+# ---------------------------------------------------------------- every frame
 
 func _process(delta: float) -> void:
-	_clock_s += delta * 4.0   # the night runs four times faster than real time
-	var h := int(_clock_s / 3600.0) % 24
-	var m := int(_clock_s / 60.0) % 60
-	hud_clock.text = "%02d:%02d" % [h, m]
-	hud_hint.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED
-	if hud_fps.visible:
-		hud_fps.text = "%d fps · %d x %d · %d draws" % [
+	paused = started and not test_mode and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED
+	player.frozen = paused or hold or terminal.is_open or cctv.is_open or not started
+	_pause.visible = paused and not _ending.visible
+	if _pause.visible:
+		_pause.text = "PAUSED\nclick to go back in\n\n[  ]   look speed   %.1f\n-  =   volume       %d%%\n1 to 5 pixel size   %d\nF3     frame stats" % [
+			player.sens, int(round(sound.volume * 100.0)), _rows_i + 1]
+
+	# which room, what can be seen from it, what it sounds like
+	var now: String = kit.room_at(player.global_position)
+	if now != "" and now != room:
+		var before := room
+		room = now
+		sound.set_bed(kit.rooms[now].bed)
+		if started:
+			story.on_room(now, before)
+	kit.show_rooms(room, _show_all)
+
+	# reticle and the words under it
+	var target: Object = player.target
+	var words := ""
+	if target != null and not player.frozen:
+		if target.has_meta("door"):
+			words = "E   badge reader · " + String((target.get_meta("door") as Node).title)
+		else:
+			words = "E   " + String(story.prompt_for(String(target.get_meta("use_id"))))
+	_prompt.text = words
+	var want := 10.0 if words != "" else 4.0
+	_reticle.size = _reticle.size.lerp(Vector2(want, want), 1.0 - exp(-18.0 * delta))
+	_reticle.position = get_viewport().get_visible_rect().size * 0.5 - _reticle.size * 0.5
+	_reticle.visible = started and not player.frozen
+
+	_toast_t -= delta
+	_toast.modulate.a = clampf(_toast_t, 0.0, 1.0)
+	_notify_t -= delta
+	_notify.modulate.a = clampf(_notify_t, 0.0, 1.0) * (0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.01))
+	_card_t -= delta
+	_card.modulate.a = clampf(_card_t * 0.7, 0.0, 1.0)
+	if _fps.visible:
+		_fps.text = "%d fps · %d x %d · %d draws · %s" % [
 			Engine.get_frames_per_second(), view.size.x, view.size.y,
-			int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME))]
+			int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)), room]
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("toggle_stats"):
-		hud_fps.visible = not hud_fps.visible
-	elif event is InputEventKey and event.pressed and not event.echo \
-			and event.physical_keycode >= KEY_1 and event.physical_keycode < KEY_1 + PIXEL_ROWS.size():
-		# number keys pick the pixel size: 1 is the chunkiest
-		_rows_i = event.physical_keycode - KEY_1
-		_fit_view()
-	else:
-		player.handle_input(event)
+func footstep(jogging: bool, crouching: bool) -> void:
+	var perforated := false
+	if room == "hall_a" or room == "hall_b":
+		var hall := "a" if room == "hall_a" else "b"
+		for a in 3:
+			if absf(player.global_position.x - kit.aisle_x(hall, a)) < 0.66:
+				perforated = true
+	sound.step(perforated, jogging, crouching)
 
 
-func aisle_x(a: int) -> float:
-	return (a - (AISLES - 1) * 0.5) * AISLE_PITCH
+func show_all_rooms(on: bool) -> void:
+	_show_all = on
 
 
 # ---------------------------------------------------------------- input
@@ -86,15 +153,190 @@ func _setup_input() -> void:
 		"move_forward": [KEY_W, KEY_UP], "move_back": [KEY_S, KEY_DOWN],
 		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT],
 		"jog": [KEY_SHIFT], "crouch": [KEY_CTRL, KEY_C], "torch": [KEY_F],
-		"release_mouse": [KEY_ESCAPE], "toggle_stats": [KEY_F3],
+		"interact": [KEY_E], "handheld": [KEY_Q], "page": [KEY_TAB, KEY_R],
+		"toggle_stats": [KEY_F3],
 	}
-	for action in keys:
+	for action: String in keys:
 		if not InputMap.has_action(action):
 			InputMap.add_action(action)
-		for code in keys[action]:
+		for code: int in keys[action]:
 			var ev := InputEventKey.new()
-			ev.physical_keycode = code
+			ev.physical_keycode = code as Key
 			InputMap.action_add_event(action, ev)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	var pressed := key != null and key.pressed and not key.echo
+	var click: bool = event is InputEventMouseButton and event.pressed
+
+	if _ending.visible:
+		if _ending_ready and (click or (pressed and key.physical_keycode in [KEY_ENTER, KEY_SPACE])):
+			get_tree().reload_current_scene()
+		return
+	if not started:
+		if click or (pressed and key.physical_keycode in [KEY_ENTER, KEY_SPACE]):
+			_begin(false)
+		elif pressed and key.physical_keycode == KEY_C and story.has_save() > 0:
+			_begin(true)
+		return
+	if pressed and terminal.is_open:
+		terminal.key(key)
+		return
+	if pressed and cctv.is_open:
+		if key.physical_keycode in [KEY_E, KEY_Q, KEY_ESCAPE]:
+			cctv.close()
+		return
+	if pressed:
+		var code := key.physical_keycode
+		if event.is_action_pressed("toggle_stats"):
+			_fps.visible = not _fps.visible
+		elif code >= KEY_1 and code < KEY_1 + PIXEL_ROWS.size():
+			# number keys pick the pixel size: 1 is the chunkiest
+			_rows_i = code - KEY_1
+			_fit_view()
+			_save_settings()
+		elif event.is_action_pressed("handheld") and story.have_handheld:
+			handheld.toggle()
+			sound.play("tick", -10.0, 1.2)
+		elif event.is_action_pressed("page") and handheld.raised:
+			handheld.next_page()
+			sound.play("tick", -12.0, 1.5)
+		elif code == KEY_ESCAPE:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		elif paused and code in [KEY_BRACKETLEFT, KEY_BRACKETRIGHT]:
+			player.sens = clampf(player.sens + (0.1 if code == KEY_BRACKETRIGHT else -0.1), 0.3, 3.0)
+			_save_settings()
+		elif paused and code in [KEY_MINUS, KEY_EQUAL]:
+			sound.set_volume(sound.volume + (0.1 if code == KEY_EQUAL else -0.1))
+			_save_settings()
+		elif not paused:
+			player.handle_input(event)
+		return
+	if click and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	elif not paused:
+		player.handle_input(event)
+
+
+func _load_settings() -> void:
+	var cf := ConfigFile.new()
+	if cf.load(SETTINGS_PATH) != OK:
+		return
+	player.sens = float(cf.get_value("s", "sens", 1.0))
+	sound.set_volume(float(cf.get_value("s", "volume", 0.8)))
+	_rows_i = clampi(int(cf.get_value("s", "rows", 1)), 0, PIXEL_ROWS.size() - 1)
+
+
+func _save_settings() -> void:
+	var cf := ConfigFile.new()
+	cf.set_value("s", "sens", player.sens)
+	cf.set_value("s", "volume", sound.volume)
+	cf.set_value("s", "rows", _rows_i)
+	cf.save(SETTINGS_PATH)
+
+
+# ---------------------------------------------------------------- title
+
+## Draw every room once behind a closed eyelid, so that shaders compile before play
+## starts and not the first time you open a door. Then show the title over Hall A.
+func _warm_up() -> void:
+	_set_lid(1.0)
+	_show_all = true
+	player.camera.far = 160.0
+	player.global_position = Vector3(44.0, 14.0, -26.0)
+	player.camera.look_at(Vector3(12.0, -6.0, 28.0))
+	player.torch.visible = true
+	await get_tree().create_timer(0.35).timeout
+	player.torch.visible = false
+	player.camera.far = 80.0
+	player.camera.rotation = Vector3.ZERO
+	_show_all = false
+	player.place(Vector3(0.0, 0.02, 0.4), PI)
+	var n: int = story.has_save()
+	_title_info.text = "CLICK   begin the night shift" + ("\nC       continue from Act %d · %s" % [n, story.ACT_NAME[n]] if n > 0 else "")
+	_title.visible = true
+	var tw := create_tween()
+	tw.tween_method(_set_lid, 1.0, 0.0, 1.2)
+
+
+func _begin(resume: bool) -> void:
+	started = true
+	_title.visible = false
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_set_lid(1.0)
+	if resume:
+		story.continue_game()
+	else:
+		story.new_game()
+	var tw := create_tween()
+	tw.tween_method(_set_lid, 1.0, 0.0, 1.6)
+
+
+# ---------------------------------------------------------------- things the story asks for
+
+func toast(text: String, secs := 6.0) -> void:
+	_toast.text = text
+	_toast_t = secs
+
+
+func notify(text: String) -> void:
+	_notify.text = "●  %s   ·   Q" % text
+	_notify_t = 7.0
+	sound.play("tone", -4.0)
+
+
+func banner(text: String) -> void:
+	_banner.text = text
+
+
+func act_card(n: int, title: String) -> void:
+	_card.text = "ACT %d\n%s\n%s" % [n, title, clock_text()]
+	_card_t = 6.0
+
+
+func dim(exposure: float) -> void:
+	env.tonemap_exposure = exposure
+
+
+func set_noise(amount: float) -> void:
+	post_mat.set_shader_parameter("noise", amount)
+
+
+func _set_lid(v: float) -> void:
+	_lid = v
+	post_mat.set_shader_parameter("lid", v)
+
+
+## The frame closes like an eyelid, `mid` happens in the dark, and it opens again.
+func blink(mid: Callable, dark := 0.3) -> void:
+	var tw := create_tween()
+	tw.tween_method(_set_lid, _lid, 1.0, 0.35)
+	await tw.finished
+	mid.call()
+	await get_tree().create_timer(dark).timeout
+	tw = create_tween()
+	tw.tween_method(_set_lid, 1.0, 0.0, 0.6)
+	await tw.finished
+
+
+func show_ending(lines: Array) -> void:
+	handheld.raised = false
+	terminal.close()
+	sound.play("chord")
+	var tw := create_tween()
+	tw.tween_method(_set_lid, _lid, 1.0, 2.2)
+	await tw.finished
+	sound.silenced = true
+	_ending.visible = true
+	var text := ""
+	for l: String in lines:
+		text += l + "\n\n"
+		_ending_text.text = text
+		await get_tree().create_timer(2.4 if l != "" else 0.6).timeout
+	_ending_text.text = text + "[color=#7f8791]click to return to the title[/color]"
+	_ending_ready = true
 
 
 # ---------------------------------------------------------------- low-resolution view
@@ -132,10 +374,8 @@ func _fit_view() -> void:
 		post_mat.set_shader_parameter("pixel_rows", float(rows))
 
 
-# ---------------------------------------------------------------- world
-
 func _build_environment() -> void:
-	var env := Environment.new()
+	env = Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.012, 0.016, 0.02)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -160,268 +400,38 @@ func _build_environment() -> void:
 	world.add_child(we)
 
 
-func _mat(albedo: Color, rough := 0.6, metal := 0.0) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = albedo
-	m.roughness = rough
-	m.metallic = metal
-	return m
-
-
-## Render layers decide which strip lights reach a mesh: aisle `a` uses layer bit `a`.
-## That keeps every mesh under the renderer's limit of eight lights and stops light
-## leaking through the rack rows.
-func _layer(a: int) -> int:
-	return 1 << a
-
-
-const ALL_AISLES := (1 << AISLES) - 1
-const SHELL := 1 << AISLES      # walls and ceiling: lit by the cross-corridor lights only
-
-
-func _box(pos: Vector3, size: Vector3, mat: Material, layers := ALL_AISLES) -> MeshInstance3D:
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	mi.material_override = mat
-	mi.position = pos
-	mi.layers = layers
-	visual.add_child(mi)
-	return mi
-
-
-func _solid(pos: Vector3, size: Vector3) -> void:
-	var body := StaticBody3D.new()
-	var cs := CollisionShape3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = size
-	cs.shape = shape
-	body.add_child(cs)
-	body.position = pos
-	world.add_child(body)
-
-
-func _build_shell() -> void:
-	var z_mid := aisle_len * 0.5
-	var z_len := aisle_len + END_PAD * 2.0
-	var hall_w := HALL_HALF_W * 2.0
-
-	# floor: a glossy plane you can see the mirrored hall through (see _build_mirror).
-	# One strip per aisle, lit only by that aisle's lights; the cross corridors see them all.
-	var floor_mat := ShaderMaterial.new()
-	floor_mat.shader = load("res://shaders/floor.gdshader")
-	for a in AISLES:
-		var x0 := -HALL_HALF_W if a == 0 else aisle_x(a) - AISLE_PITCH * 0.5
-		var x1 := HALL_HALF_W if a == AISLES - 1 else aisle_x(a) + AISLE_PITCH * 0.5
-		_floor_piece(floor_mat, (x0 + x1) * 0.5, z_mid, x1 - x0, aisle_len, _layer(a))
-	_floor_piece(floor_mat, 0.0, -END_PAD * 0.5, hall_w, END_PAD, ALL_AISLES)
-	_floor_piece(floor_mat, 0.0, aisle_len + END_PAD * 0.5, hall_w, END_PAD, ALL_AISLES)
-	_solid(Vector3(0, -0.1, z_mid), Vector3(hall_w, 0.2, z_len))
-
-	var dark := _mat(Color(0.07, 0.072, 0.08), 0.8)
-	var wall := _mat(Color(0.05, 0.052, 0.058), 0.85)
-	_box(Vector3(0, CEIL_Y + 0.1, z_mid), Vector3(hall_w, 0.2, z_len), dark, SHELL)
-	for side in [-1.0, 1.0]:
-		_box(Vector3(side * (HALL_HALF_W + 0.1), CEIL_Y * 0.5, z_mid), Vector3(0.2, CEIL_Y, z_len), wall, SHELL)
-		_solid(Vector3(side * (HALL_HALF_W + 0.1), CEIL_Y * 0.5, z_mid), Vector3(0.2, CEIL_Y, z_len))
-	for z in [-END_PAD - 0.1, aisle_len + END_PAD + 0.1]:
-		_box(Vector3(0, CEIL_Y * 0.5, z), Vector3(hall_w, CEIL_Y, 0.2), wall, SHELL)
-		_solid(Vector3(0, CEIL_Y * 0.5, z), Vector3(hall_w, CEIL_Y, 0.2))
-
-	# the far door, and the green exit sign over it
-	var door := _mat(Color(0.09, 0.095, 0.105), 0.5, 0.6)
-	_box(Vector3(0, 1.05, aisle_len + END_PAD - 0.02), Vector3(1.0, 2.1, 0.06), door, SHELL)
-	var sign_mat := StandardMaterial3D.new()
-	sign_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	sign_mat.albedo_color = Color(0.1, 1.0, 0.3)
-	sign_mat.emission_enabled = true
-	sign_mat.emission = Color(0.1, 1.0, 0.3)
-	sign_mat.emission_energy_multiplier = 3.0
-	_box(Vector3(0, 2.45, aisle_len + END_PAD - 0.03), Vector3(0.48, 0.15, 0.04), sign_mat)
-	var sign_light := OmniLight3D.new()
-	sign_light.light_color = Color(0.1, 1.0, 0.3)
-	sign_light.light_energy = 0.5
-	sign_light.omni_range = 5.0
-	sign_light.light_cull_mask = SHELL | ALL_AISLES
-	sign_light.position = Vector3(0, 2.4, aisle_len + END_PAD - 0.4)
-	world.add_child(sign_light)
-
-
-func _floor_piece(mat: Material, x: float, z: float, w: float, d: float, layers: int) -> void:
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(w, d)
-	var mi := MeshInstance3D.new()
-	mi.mesh = plane
-	mi.material_override = mat
-	mi.position = Vector3(x, 0, z)
-	mi.layers = layers
-	world.add_child(mi)
-
-
-## One cold aisle: two facing rows of racks, the fibre overhead, and its strip lights.
-func _build_aisle(a: int) -> void:
-	var cx := aisle_x(a)
-	var layers := _layer(a)
-	var z_mid := aisle_len * 0.5
-	var row_letter := char(65 + a * 2)   # rows A/B, C/D, E/F
-
-	# rack bodies
-	var body_mesh := BoxMesh.new()
-	body_mesh.size = Vector3(RACK_D, RACK_H, RACK_W - 0.012)
-	body_mesh.material = _mat(Color(0.06, 0.06, 0.065), 0.55, 0.3)
-	var bodies := MultiMesh.new()
-	bodies.transform_format = MultiMesh.TRANSFORM_3D
-	bodies.mesh = body_mesh
-	bodies.instance_count = RACKS * 2
-
-	# rack fronts: one quad each, every LED drawn by the shader
-	var front_mat := ShaderMaterial.new()
-	front_mat.shader = load("res://shaders/rack_front.gdshader")
-	front_mat.set_shader_parameter("seed", float(a) * 97.0)
-	var front_mesh := QuadMesh.new()
-	front_mesh.size = Vector2(RACK_W, RACK_H)
-	front_mesh.material = front_mat
-	var fronts := MultiMesh.new()
-	fronts.transform_format = MultiMesh.TRANSFORM_3D
-	fronts.mesh = front_mesh
-	fronts.instance_count = RACKS * 2
-
-	# a spool of fibre slack above every rack, so every customer gets the same length
-	var yellow := _mat(Color(0.85, 0.58, 0.04), 0.5)
-	var torus := TorusMesh.new()
-	torus.inner_radius = 0.154
-	torus.outer_radius = 0.226
-	torus.rings = 16
-	torus.ring_segments = 6
-	torus.material = yellow
-	var spools := MultiMesh.new()
-	spools.transform_format = MultiMesh.TRANSFORM_3D
-	spools.mesh = torus
-	spools.instance_count = RACKS * 2
-	var upright := Basis(Vector3.FORWARD, PI * 0.5)
-
-	var n := 0
-	for side in [-1.0, 1.0]:
-		for i in RACKS:
-			var z := (i + 0.5) * RACK_W
-			bodies.set_instance_transform(n, Transform3D(Basis(), Vector3(cx + side * ROW_X, RACK_H * 0.5, z)))
-			var facing := Basis(Vector3.UP, -side * PI * 0.5)   # quad normal points into the aisle
-			fronts.set_instance_transform(n, Transform3D(facing, Vector3(cx + side * (FRONT_X - 0.004), RACK_H * 0.5, z)))
-			spools.set_instance_transform(n, Transform3D(upright, Vector3(cx + side * 1.305, 2.62, z)))
-			n += 1
-			if i % 8 == 1:
-				var letter := row_letter if side < 0 else char(row_letter.unicode_at(0) + 1)
-				_rack_label(cx, side, z, "HALL A · ROW %s · %d" % [letter, 140 + i], layers)
-		# bulkhead over the row, and one long collider for it
-		_box(Vector3(cx + side * 2.05, 2.72, z_mid), Vector3(1.4, 1.14, aisle_len), _mat(Color(0.07, 0.072, 0.08), 0.8), layers)
-		_solid(Vector3(cx + side * ROW_X, RACK_H * 0.5, z_mid), Vector3(RACK_D, RACK_H, aisle_len))
-
-	for mm in [bodies, fronts, spools]:
-		var mmi := MultiMeshInstance3D.new()
-		mmi.multimesh = mm
-		mmi.layers = layers
-		visual.add_child(mmi)
-
-	# cable tray down the middle, two runs of yellow fibre on top of it
-	_box(Vector3(cx, 2.86, z_mid), Vector3(0.6, 0.04, aisle_len), _mat(Color(0.1, 0.1, 0.11), 0.5, 0.5), layers)
-	for side in [-1.0, 1.0]:
-		var tube := CylinderMesh.new()
-		tube.top_radius = 0.05
-		tube.bottom_radius = 0.05
-		tube.height = aisle_len
-		tube.radial_segments = 8
-		tube.rings = 1
-		var mi := MeshInstance3D.new()
-		mi.mesh = tube
-		mi.material_override = yellow
-		mi.layers = layers
-		mi.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(cx + side * 0.13, 2.925, z_mid))
-		visual.add_child(mi)
-
-	# a dimmer fitting in each cross corridor, at the mouth of the aisle
-	for z in [-END_PAD * 0.5, aisle_len + END_PAD * 0.5]:
-		var cl := OmniLight3D.new()
-		cl.light_color = STRIP_COLOUR
-		cl.light_energy = 1.6
-		cl.omni_range = 6.0
-		cl.omni_attenuation = 1.3
-		cl.light_cull_mask = layers | SHELL
-		cl.position = Vector3(cx, 2.9, z)
-		world.add_child(cl)
-		_strip_lights.append(cl)
-
-	# strip lights
-	var strip_mat := StandardMaterial3D.new()
-	strip_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	strip_mat.albedo_color = STRIP_COLOUR
-	strip_mat.emission_enabled = true
-	strip_mat.emission = STRIP_COLOUR
-	strip_mat.emission_energy_multiplier = 4.0
-	var haze_mat := ShaderMaterial.new()
-	haze_mat.shader = load("res://shaders/haze_cone.gdshader")
-	var count := int(floor(aisle_len / STRIP_GAP)) + 1
-	var z0 := (aisle_len - (count - 1) * STRIP_GAP) * 0.5
-	for i in count:
-		var z := z0 + i * STRIP_GAP
-		_box(Vector3(cx, 3.23, z), Vector3(1.6, 0.06, 0.14), strip_mat, layers)
-		var light := OmniLight3D.new()
-		light.light_color = STRIP_COLOUR
-		light.light_energy = 3.4
-		light.omni_range = 7.5
-		light.omni_attenuation = 1.3
-		light.light_specular = 0.6
-		light.light_cull_mask = layers
-		light.position = Vector3(cx, 3.0, z)
-		world.add_child(light)
-		_strip_lights.append(light)
-		var haze := MeshInstance3D.new()
-		var quad := QuadMesh.new()
-		quad.size = Vector2(2.6, 3.2)
-		haze.mesh = quad
-		haze.material_override = haze_mat
-		haze.position = Vector3(cx, 1.62, z)
-		haze.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		world.add_child(haze)
-
-
-func _rack_label(cx: float, side: float, z: float, text: String, layers: int) -> void:
-	var facing := Basis(Vector3.UP, -side * PI * 0.5)
-	var sticker := MeshInstance3D.new()
-	var quad := QuadMesh.new()
-	quad.size = Vector2(0.2, 0.042)
-	sticker.mesh = quad
-	sticker.material_override = _mat(Color(0.62, 0.62, 0.58), 0.9)
-	sticker.layers = layers
-	sticker.transform = Transform3D(facing, Vector3(cx + side * (FRONT_X - 0.008), 2.085, z))
-	visual.add_child(sticker)
-	var label := Label3D.new()
-	label.text = text
-	label.font = load("res://fonts/IBMPlexMono-Medium.ttf")
-	label.font_size = 48
-	label.pixel_size = 0.00042
-	label.modulate = Color(0.05, 0.05, 0.05)
-	label.outline_size = 0
-	label.shaded = true
-	label.layers = layers
-	label.transform = Transform3D(facing, Vector3(cx + side * (FRONT_X - 0.011), 2.085, z))
-	visual.add_child(label)
-
-
-## The Compatibility renderer has no screen-space reflections, so the floor is a real mirror:
-## the hall is drawn a second time upside down beneath a partly transparent floor.
-func _build_mirror() -> void:
-	var mirror := visual.duplicate()
-	mirror.scale = Vector3(1, -1, 1)
-	world.add_child(mirror)
-
-
 func _build_player() -> void:
 	player = CharacterBody3D.new()
 	player.set_script(load("res://scripts/player.gd"))
-	player.position = Vector3(aisle_x(1), 0.02, -1.2)
-	player.rotation.y = PI   # face down the middle aisle (+z)
+	player.game = self
 	world.add_child(player)
+	player.place(Vector3(0.0, 0.02, 0.4), PI)
+
+	figure = Node3D.new()
+	figure.set_script(load("res://scripts/figure.gd"))
+	figure.game = self
+	world.add_child(figure)
+
+	# the technician on camera 4: lit, carrying a torch, wearing your badge number
+	double = Node3D.new()
+	var body := CapsuleMesh.new()
+	body.radius = 0.2
+	body.height = 1.75
+	var b := MeshInstance3D.new()
+	b.mesh = body
+	b.material_override = kit.mat(Color(0.12, 0.13, 0.15), 0.8)
+	b.position.y = 0.88
+	b.layers = 1 << 5
+	double.add_child(b)
+	var beam := SpotLight3D.new()
+	beam.light_color = Color(0.86, 0.93, 1.0)
+	beam.light_energy = 30.0
+	beam.spot_range = 14.0
+	beam.spot_angle = 30.0
+	beam.position = Vector3(0.18, 1.45, -0.2)
+	double.add_child(beam)
+	double.visible = false
+	world.add_child(double)
 
 
 # ---------------------------------------------------------------- lens and HUD
@@ -438,82 +448,188 @@ func _build_lens_and_hud() -> void:
 	rect.material = post_mat
 	lens.add_child(rect)
 
-	var hud := CanvasLayer.new()
-	hud.layer = 2
-	add_child(hud)
-	var mono: Font = load("res://fonts/IBMPlexMono-Medium.ttf")
-	var loc := _label(hud, mono, 13, Color(0.6, 0.63, 0.69), Vector2(32, 26))
-	loc.text = "HALDEN DC-3  ·  DATA HALL A  ·  LOOK TEST"
-	hud_clock = _label(hud, mono, 26, Color(0.93, 0.95, 0.97), Vector2(32, 46))
-	hud_fps = _label(hud, mono, 12, Color(1.0, 0.7, 0.28), Vector2(32, 86))
-	hud_fps.visible = false
-	hud_hint = _label(hud, mono, 14, Color(0.93, 0.95, 0.97), Vector2.ZERO)
-	hud_hint.text = "CLICK TO START\n\nWASD move  ·  Shift jog  ·  Ctrl crouch  ·  F torch\n1 to 5 pixel size  ·  F3 stats  ·  Esc release mouse"
-	hud_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hud_hint.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	hud_hint.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	hud_hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	hud_hint.position.y -= 48
+	_hud = CanvasLayer.new()
+	_hud.layer = 2
+	add_child(_hud)
 
-	# reticle: one quiet dot
-	var dot := ColorRect.new()
-	dot.color = Color(0.93, 0.95, 0.97, 0.55)
-	dot.size = Vector2(4, 4)
-	dot.set_anchors_preset(Control.PRESET_CENTER)
-	dot.position -= Vector2(2, 2)
-	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud.add_child(dot)
+	_reticle = ColorRect.new()
+	_reticle.color = Color(0.93, 0.95, 0.97, 0.55)
+	_reticle.size = Vector2(4, 4)
+	_reticle.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud.add_child(_reticle)
+
+	_prompt = _label(13, INK, HORIZONTAL_ALIGNMENT_CENTER)
+	_anchor(_prompt, Control.PRESET_CENTER, Vector2(0, 34))
+	_toast = _label(15, INK, HORIZONTAL_ALIGNMENT_CENTER)
+	_toast.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_toast.custom_minimum_size = Vector2(760, 0)
+	_anchor(_toast, Control.PRESET_CENTER_BOTTOM, Vector2(0, -70))
+	_notify = _label(13, AMBER, HORIZONTAL_ALIGNMENT_RIGHT)
+	_anchor(_notify, Control.PRESET_BOTTOM_RIGHT, Vector2(-36, -30))
+	_banner = _label(22, AMBER, HORIZONTAL_ALIGNMENT_CENTER)
+	_anchor(_banner, Control.PRESET_CENTER_TOP, Vector2(0, 40))
+	_card = _label(15, INK, HORIZONTAL_ALIGNMENT_LEFT)
+	_card.position = Vector2(36, 30)
+	_fps = _label(12, AMBER, HORIZONTAL_ALIGNMENT_LEFT)
+	_anchor(_fps, Control.PRESET_BOTTOM_LEFT, Vector2(36, -30))
+	_fps.visible = false
+
+	handheld = Control.new()
+	handheld.set_script(load("res://scripts/handheld.gd"))
+	_hud.add_child(handheld)
+	handheld.build(self, _mono, _mono_light)
+	terminal = Control.new()
+	terminal.set_script(load("res://scripts/terminal.gd"))
+	_hud.add_child(terminal)
+	terminal.build(self, _mono, _mono_light)
+	cctv = Control.new()
+	cctv.set_script(load("res://scripts/cctv.gd"))
+	_hud.add_child(cctv)
+	cctv.build(self, _mono)
+
+	_pause = _label(15, INK, HORIZONTAL_ALIGNMENT_LEFT)
+	_anchor(_pause, Control.PRESET_CENTER, Vector2(0, 0))
+	_pause.visible = false
+
+	# title
+	_title = Control.new()
+	_title.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_title.visible = false
+	_hud.add_child(_title)
+	var shade := ColorRect.new()
+	shade.color = Color(0, 0, 0, 0.45)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_title.add_child(shade)
+	var name_l := _label(64, INK, HORIZONTAL_ALIGNMENT_LEFT, _title)
+	name_l.text = "COLD AISLE"
+	name_l.position = Vector2(80, 150)
+	var sub := _label(14, Color(0.6, 0.63, 0.69), HORIZONTAL_ALIGNMENT_LEFT, _title)
+	sub.text = "HALDEN DC-3  ·  NIGHT SHIFT  ·  22:00"
+	sub.position = Vector2(84, 240)
+	_title_info = _label(18, AMBER, HORIZONTAL_ALIGNMENT_LEFT, _title)
+	_title_info.position = Vector2(84, 320)
+	var keys := _label(13, Color(0.6, 0.63, 0.69), HORIZONTAL_ALIGNMENT_LEFT, _title)
+	keys.text = "WASD   move            E     use, badge\nSHIFT  jog             Q     handheld\nCTRL   crouch          TAB   handheld page (or R)\nF      torch           ESC   pause, settings\n\nAbout twenty minutes. Sound on. Progress is kept at the start of each act."
+	keys.position = Vector2(84, 440)
+
+	# ending
+	_ending = Control.new()
+	_ending.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_ending.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ending.visible = false
+	_hud.add_child(_ending)
+	var black := ColorRect.new()
+	black.color = Color(0.012, 0.016, 0.02)
+	black.set_anchors_preset(Control.PRESET_FULL_RECT)
+	black.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ending.add_child(black)
+	_ending_text = RichTextLabel.new()
+	_ending_text.bbcode_enabled = true
+	_ending_text.scroll_active = false
+	_ending_text.add_theme_font_override("normal_font", _mono_light)
+	_ending_text.add_theme_font_size_override("normal_font_size", 17)
+	_ending_text.add_theme_color_override("default_color", INK)
+	_ending_text.position = Vector2(120, 110)
+	_ending_text.size = Vector2(900, 560)
+	_ending_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ending.add_child(_ending_text)
 
 
-func _label(parent: Node, font: Font, size: int, colour: Color, pos: Vector2) -> Label:
+func _label(size: int, colour: Color, align: HorizontalAlignment, parent: Node = null) -> Label:
 	var l := Label.new()
-	l.add_theme_font_override("font", font)
+	l.add_theme_font_override("font", _mono)
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", colour)
-	l.position = pos
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	l.add_theme_constant_override("shadow_offset_x", 1)
+	l.add_theme_constant_override("shadow_offset_y", 1)
+	l.horizontal_alignment = align
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	parent.add_child(l)
+	(parent if parent else _hud).add_child(l)
 	return l
 
 
-# ---------------------------------------------------------------- test shots
+func _anchor(l: Label, preset: Control.LayoutPreset, offset: Vector2) -> void:
+	l.set_anchors_and_offsets_preset(preset)
+	l.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	l.grow_vertical = Control.GROW_DIRECTION_BOTH
+	if preset in [Control.PRESET_BOTTOM_RIGHT, Control.PRESET_TOP_RIGHT]:
+		l.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	if preset in [Control.PRESET_BOTTOM_LEFT, Control.PRESET_TOP_LEFT]:
+		l.grow_horizontal = Control.GROW_DIRECTION_END
+	if preset in [Control.PRESET_BOTTOM_RIGHT, Control.PRESET_BOTTOM_LEFT, Control.PRESET_CENTER_BOTTOM]:
+		l.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	if preset == Control.PRESET_CENTER_TOP:
+		l.grow_vertical = Control.GROW_DIRECTION_END
+	l.position += offset
 
-## `-- --shot=<name> --out=<file.png>` renders one still and quits. Used to check the look.
-func _apply_shot_args() -> void:
-	var shot := ""
-	var out := ""
+
+# ---------------------------------------------------------------- tests
+
+## Command-line helpers, after `--`:
+##   --autotest=comply|defy|stay     play the whole night and check it can be finished
+##   --act=N --at=x,y,z,yaw --out=f.png [--torch] [--handheld=PAGE] [--all]   render one still
+func _apply_test_args() -> bool:
+	var args := {}
 	for a in OS.get_cmdline_user_args():
-		if a.begins_with("--shot="):
-			shot = a.trim_prefix("--shot=")
-		elif a.begins_with("--out="):
-			out = a.trim_prefix("--out=")
-	if shot == "":
+		var kv := a.trim_prefix("--").split("=")
+		args[kv[0]] = kv[1] if kv.size() > 1 else "1"
+	if args.has("walktest"):
+		test_mode = true
+		story.walktest()
+		return true
+	if args.has("autotest"):
+		test_mode = true
+		story.autotest(args["autotest"])
+		return true
+	if not args.has("out"):
+		return false
+	_shot(args)
+	return true
+
+
+func _shot(args: Dictionary) -> void:
+	test_mode = true
+	if args.has("title"):
+		_warm_up()
+		await get_tree().create_timer(3.0).timeout
+		get_viewport().get_texture().get_image().save_png(args["out"])
+		get_tree().quit()
 		return
-	hud_hint.modulate.a = 0.0
-	set_process(false)
-	match shot:
-		"aisle":
-			player.position = Vector3(aisle_x(1), 0.02, 0.4)
-		"cross":
-			# standing in the cross corridor, looking across the mouths of all three aisles
-			player.position = Vector3(-8.4, 0.02, -1.9)
-			player.rotation.y = -1.92
-		"rack":
-			player.position = Vector3(aisle_x(1) + 0.35, 0.02, 8.0)
-			player.rotation.y = PI + 1.15
-		"hot":
-			# a hot aisle between two row backs: no strip lights, torch only
-			player.position = Vector3((aisle_x(0) + aisle_x(1)) * 0.5, 0.02, 1.0)
-			player.torch.visible = true
-		"torch":
-			player.position = Vector3(aisle_x(1), 0.02, 0.4)
-			player.torch.visible = true
-			for l in _strip_lights:
-				l.visible = false
-	await get_tree().create_timer(1.5).timeout
+	started = true
+	story.begin_act(int(args.get("act", "1")), true)
+	_card_t = 0.0
+	_toast_t = 0.0
+	if args.has("at"):
+		var v: PackedStringArray = args["at"].split(",")
+		player.place(Vector3(float(v[0]), float(v[1]), float(v[2])), float(v[3]) if v.size() > 3 else 0.0)
+		if v.size() > 4:
+			player.camera.rotation.x = float(v[4])
+	player.torch.visible = args.has("torch")
+	if args.has("all"):
+		_show_all = true
+	if args.has("handheld"):
+		story.have_handheld = true
+		handheld.page = int(args["handheld"])
+		handheld.toggle()
+		handheld.page = int(args["handheld"])
+		handheld.refresh()
+	if args.has("figure"):
+		var v2: PackedStringArray = args["figure"].split(",")
+		figure.active = true
+		figure.set_physics_process(false)
+		figure.visible = true
+		figure.position = Vector3(float(v2[0]), 0, float(v2[1]))
+	if args.has("use"):
+		await get_tree().create_timer(0.5).timeout
+		story.on_use(args["use"])
+	if args.has("ending"):
+		story._ending(args["ending"])
+	await get_tree().create_timer(float(args.get("wait", "1.5"))).timeout
 	print("draw calls: ", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 		"  primitives: ", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME),
-		"  view: ", view.size)
-	var img := get_viewport().get_texture().get_image()
-	img.save_png(out)
+		"  view: ", view.size, "  room: ", room)
+	get_viewport().get_texture().get_image().save_png(args["out"])
 	get_tree().quit()
