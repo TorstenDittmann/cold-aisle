@@ -1,0 +1,83 @@
+// Front face of a 42U rack behind a perforated door. Every LED is drawn here,
+// procedurally, so a hall of racks costs no lights at all.
+// UV spans one rack face: 0.62 m wide, 2.12 m tall.
+shader_type spatial;
+
+uniform float power = 1.0;        // 0 = rack is dark (power cut)
+uniform float led_gain = 2.2;
+
+varying float rid;
+
+float h1(float n) { return fract(sin(n * 127.1) * 43758.5453); }
+
+void vertex() {
+	rid = float(INSTANCE_ID) + 1.0;
+}
+
+void fragment() {
+	float u = (UV.x - 0.5) * 0.62;
+	float v = (1.0 - UV.y) * 2.12;
+	float px = max(fwidth(v), fwidth(u));   // metres per pixel
+	vec3 alb = vec3(0.03);
+	vec3 em = vec3(0.0);
+	float rough = 0.7;
+
+	if (abs(u) > 0.265 || v < 0.07 || v > 2.05) {
+		// door frame
+		alb = vec3(0.12, 0.125, 0.135);
+		rough = 0.45;
+	} else {
+		float row = (v - 0.08) / 0.0445;
+		float iu = floor(row);
+		float fv = fract(row);
+		float hr = h1(iu * 7.3 + rid * 13.1);
+		float gap = smoothstep(0.0, 0.08, fv) * smoothstep(1.0, 0.92, fv);
+		float kk = 0.0035 / (0.0035 + px);
+		float y = (fv - 0.5) * 0.0445;
+		if (iu >= 42.0) {
+			// patch panel: a row of link lights
+			alb = vec3(0.02);
+			float cx = (u + 0.25) / 0.5 * 24.0;
+			float col = floor(cx);
+			float fu = fract(cx);
+			float on = step(0.3, h1(col + iu * 31.0 + rid))
+				* step(0.3, h1(col * 1.7 + iu + rid + floor(TIME * (4.0 + 8.0 * h1(col + rid)))));
+			float dt = smoothstep(0.4, 0.15, abs(fu - 0.5)) * smoothstep(0.34, 0.12, abs(fv - 0.5));
+			vec3 c = mix(vec3(0.1, 1.0, 0.3), vec3(1.0, 0.6, 0.1), step(0.85, h1(col * 3.3 + rid)));
+			em = c * on * dt * 2.6 * mix(0.3, 1.0, kk);
+		} else if (hr > 0.2) {
+			// a server: green status, blue activity, sometimes a bank of port lights
+			alb = vec3(0.06) * (0.5 + 0.5 * gap);
+			float vent = smoothstep(0.3, 0.5, abs(fract(u * 90.0) - 0.5)) * step(abs(fv - 0.5), 0.3) * step(abs(u), 0.19);
+			alb *= 1.0 - 0.6 * vent * smoothstep(0.004, 0.001, px);
+			em += vec3(0.1, 1.0, 0.35) * smoothstep(0.0038 + px, 0.001, length(vec2(u + 0.24, y))) * 1.8 * kk * kk;
+			float act = step(0.5, h1(iu + rid * 3.0 + floor(TIME * (3.0 + 9.0 * hr))));
+			em += vec3(0.15, 0.45, 1.0) * smoothstep(0.0034 + px, 0.001, length(vec2(u + 0.226, y))) * act * 2.6 * kk * kk;
+			if (u > 0.05 && u < 0.226 && hr > 0.72) {
+				float dc = floor((u - 0.05) / 0.022);
+				float du = fract((u - 0.05) / 0.022);
+				float a2 = step(0.6, h1(dc * 5.0 + iu * 3.0 + rid + floor(TIME * 12.0 * h1(dc + iu))));
+				em += vec3(0.1, 1.0, 0.3) * smoothstep(0.34, 0.1, abs(du - 0.5)) * smoothstep(0.14, 0.04, abs(fv - 0.22)) * a2 * 1.8 * kk;
+			}
+			// the odd amber fault light
+			float fault = step(0.985, h1(iu * 3.7 + rid * 5.3));
+			em += vec3(1.0, 0.55, 0.1) * smoothstep(0.0038 + px, 0.001, length(vec2(u + 0.21, y))) * fault * 2.4 * kk * kk;
+		} else {
+			// blanking panel
+			alb = vec3(0.035) * (0.7 + 0.3 * gap);
+		}
+		// perforated door in front of everything
+		vec2 hq = vec2(u, v) / 0.0045;
+		hq.x += 0.5 * floor(hq.y);
+		float hole = smoothstep(0.36, 0.26, length(fract(hq) - 0.5));
+		float near = smoothstep(0.003, 0.0008, px);
+		alb = mix(alb * 0.6 + vec3(0.045), mix(vec3(0.11), alb * 0.8, hole), near);
+		em *= mix(0.75, 0.6 + 0.4 * hole, near);
+		rough = 0.6;
+	}
+	ALBEDO = alb;
+	ROUGHNESS = rough;
+	METALLIC = 0.0;
+	SPECULAR = 0.4;
+	EMISSION = em * power * led_gain;
+}
