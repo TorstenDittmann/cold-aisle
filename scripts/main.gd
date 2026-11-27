@@ -66,11 +66,10 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_stats"):
 		hud_fps.visible = not hud_fps.visible
-	elif event.is_action_pressed("pixels_bigger"):
-		_rows_i = maxi(0, _rows_i - 1)
-		_fit_view()
-	elif event.is_action_pressed("pixels_smaller"):
-		_rows_i = mini(PIXEL_ROWS.size() - 1, _rows_i + 1)
+	elif event is InputEventKey and event.pressed and not event.echo \
+			and event.physical_keycode >= KEY_1 and event.physical_keycode < KEY_1 + PIXEL_ROWS.size():
+		# number keys pick the pixel size: 1 is the chunkiest
+		_rows_i = event.physical_keycode - KEY_1
 		_fit_view()
 	else:
 		player.handle_input(event)
@@ -88,7 +87,6 @@ func _setup_input() -> void:
 		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT],
 		"jog": [KEY_SHIFT], "crouch": [KEY_CTRL, KEY_C], "torch": [KEY_F],
 		"release_mouse": [KEY_ESCAPE], "toggle_stats": [KEY_F3],
-		"pixels_bigger": [KEY_BRACKETLEFT], "pixels_smaller": [KEY_BRACKETRIGHT],
 	}
 	for action in keys:
 		if not InputMap.has_action(action):
@@ -450,7 +448,7 @@ func _build_lens_and_hud() -> void:
 	hud_fps = _label(hud, mono, 12, Color(1.0, 0.7, 0.28), Vector2(32, 86))
 	hud_fps.visible = false
 	hud_hint = _label(hud, mono, 14, Color(0.93, 0.95, 0.97), Vector2.ZERO)
-	hud_hint.text = "CLICK TO START\n\nWASD move  ·  Shift jog  ·  Ctrl crouch  ·  F torch\n[ and ] pixel size  ·  F3 stats  ·  Esc release mouse"
+	hud_hint.text = "CLICK TO START\n\nWASD move  ·  Shift jog  ·  Ctrl crouch  ·  F torch\n1 to 5 pixel size  ·  F3 stats  ·  Esc release mouse"
 	hud_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hud_hint.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	hud_hint.grow_horizontal = Control.GROW_DIRECTION_BOTH

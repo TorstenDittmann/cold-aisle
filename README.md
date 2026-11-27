@@ -10,7 +10,7 @@ Open the folder in Godot 4.7 and press Play, or from a terminal:
 
     godot --path .
 
-Controls: click to capture the mouse, WASD to move, Shift to jog, Ctrl to crouch, F for the torch, [ and ] to change the pixel size, F3 for frame stats, Esc to release the mouse.
+Controls: click to capture the mouse, WASD to move, Shift to jog, Ctrl to crouch, F for the torch, 1 to 5 to set the pixel size, F3 for frame stats, Esc to release the mouse.
 
 ## Web build
 
