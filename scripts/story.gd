@@ -195,13 +195,13 @@ func _goal() -> Array:
 			if not notes.has("note1"):
 				return ["The CH-2 panel: something is taped inside", u["note1"].position]
 			if room == "plenum":
+				if flags.has("fibre") and not flags.has("damper"):
+					return ["Follow the lit fibre to damper P-7 and pull its release", u["damper_pull"].position]
 				return ["Follow the lit fibre" if flags.has("fibre") else "Under the floor: find the way up", null]
 			if not flags.has("fibre"):
 				if room == "mmr":
 					return ["Meet-me room: panel 7, port 12", u["panel7"].position]
 				return ["Zone B, far end, rows I and J: the loose tile", u["hatch_b"].position]
-			if not flags.has("damper"):
-				return ["Meet-me room: damper P-7", u["damper"].position]
 			return ["Under the floor: follow the lit fibre", u["hatch_mmr"].position]
 		5:
 			if not flags.has("console7"):
@@ -346,6 +346,8 @@ func prompt_for(id: String) -> String:
 			return "" if flags.has("fibre") else "Clip the fault locator on port 12"
 		"damper":
 			return "Close damper P-7" if flags.has("damper") else "Open damper P-7"
+		"damper_pull":
+			return "" if flags.has("damper") else "Pull the damper release"
 		"console7":
 			return "Use the console" if act >= 5 else ""
 		"cage_gate":
@@ -431,6 +433,11 @@ func on_use(id: String) -> void:
 			kit.set_fibre_lit(true)
 			game.sound.play("beep")
 			game.toast("Port 12 lights up red. Under the floor, one fibre is glowing.")
+		"damper_pull":
+			flags["damper"] = true
+			kit.set_damper(true)
+			game.sound.play("breaker", -6.0, 1.3)
+			game.toast("The damper drops open. The fibre runs on through it.")
 		"damper":
 			if flags.has("damper"):
 				flags.erase("damper")

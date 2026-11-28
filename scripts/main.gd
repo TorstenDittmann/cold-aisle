@@ -27,6 +27,7 @@ var handheld: Control
 var terminal: Control
 var cctv: Control
 var touch: Control
+var hands: Node3D
 var post_mat: ShaderMaterial
 var env: Environment
 
@@ -39,7 +40,7 @@ var hold := false           # a scripted moment is keeping the player still
 var test_mode := false
 var playtest := false       # a test that plays with simulated keys: cutscenes and hints stay on
 
-var _rows_i := 1
+var _rows_i := 3
 var _rows_saved := false
 var _show_all := false
 var _lid := 0.0
@@ -115,7 +116,7 @@ func _process(delta: float) -> void:
 		paused = started and touch.paused and not in_scene
 	else:
 		paused = started and not test_mode and not in_scene and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED
-	player.frozen = paused or hold or in_scene or terminal.is_open or cctv.is_open or not started
+	player.frozen = paused or hold or hands.hold or in_scene or terminal.is_open or cctv.is_open or not started
 	_pause.visible = paused and not touch.active and not _ending.visible
 	if _pause.visible:
 		_pause.text = "PAUSED\nclick to go back in\n\n[  ]     look speed   %.1f\n-  =     volume       %d%%\n1 to 5   pixel size   %d\nF3       frame stats\n\nW A S D  walk         SHIFT  jog       CTRL  crouch\nE        use          F      torch     Q     handheld" % [
@@ -333,8 +334,6 @@ func pixel_setting() -> int:
 
 ## The first touch: no mouse to capture, and a small screen wants chunkier pixels.
 func on_touch_mode() -> void:
-	if not _rows_saved:
-		_rows_i = 0
 	_fit_view()
 
 
@@ -348,8 +347,8 @@ func _load_settings() -> void:
 		return
 	player.sens = float(cf.get_value("s", "sens", 1.0))
 	sound.set_volume(float(cf.get_value("s", "volume", 0.8)))
-	if cf.has_section_key("s", "rows"):
-		_rows_i = clampi(int(cf.get_value("s", "rows", 1)), 0, PIXEL_ROWS.size() - 1)
+	if cf.has_section_key("s", "rows4"):
+		_rows_i = clampi(int(cf.get_value("s", "rows4", 3)), 0, PIXEL_ROWS.size() - 1)
 		_rows_saved = true
 
 
@@ -358,7 +357,7 @@ func _save_settings() -> void:
 	cf.set_value("s", "sens", player.sens)
 	cf.set_value("s", "volume", sound.volume)
 	if _rows_saved:
-		cf.set_value("s", "rows", _rows_i)
+		cf.set_value("s", "rows4", _rows_i)
 	cf.save(SETTINGS_PATH)
 
 
@@ -519,7 +518,7 @@ func _build_view() -> void:
 	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	view.handle_input_locally = false
 	view.audio_listener_enable_3d = true
-	view.msaa_3d = Viewport.MSAA_DISABLED
+	view.msaa_3d = Viewport.MSAA_4X   # thin pipes and far rows shimmer badly at this size without it
 	add_child(view)
 	world = Node3D.new()
 	view.add_child(world)
@@ -585,6 +584,10 @@ func _build_player() -> void:
 	player.game = self
 	world.add_child(player)
 	player.place(Vector3(0.0, 0.02, 0.4), PI)
+	hands = Node3D.new()
+	hands.set_script(load("res://scripts/hands.gd"))
+	player.camera.add_child(hands)
+	hands.build(self)
 
 	figure = Node3D.new()
 	figure.set_script(load("res://scripts/figure.gd"))
@@ -861,7 +864,10 @@ func _shot(args: Dictionary) -> void:
 		figure.position = Vector3(float(v2[0]), 0, float(v2[1]))
 	if args.has("use"):
 		await get_tree().create_timer(0.5).timeout
-		story.on_use(args["use"])
+		if args.has("hands"):
+			hands.act(args["use"], kit.uses[args["use"]].global_position)
+		else:
+			story.on_use(args["use"])
 	if args.has("ending"):
 		story._ending(args["ending"])
 	if args.has("wake"):

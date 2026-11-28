@@ -30,6 +30,7 @@ var _eye := EYE_STAND
 var _bob := 0.0
 var _stride := 0.0
 var _wake := 0.0     # 1 = lying on the floor, 0 = up
+var _lean := 0.0     # metres the eye is pushed forward while the hands work
 
 
 func _ready() -> void:
@@ -96,7 +97,29 @@ func use_target() -> void:
 	if target.has_meta("door"):
 		(target.get_meta("door") as Node).badge()
 	elif target.has_meta("use_id"):
-		game.story.on_use(String(target.get_meta("use_id")))
+		var id := String(target.get_meta("use_id"))
+		if game.hands.busy:
+			return
+		if game.hands.wants(id):
+			game.hands.act(id, (target as Node3D).global_position)
+		else:
+			game.story.on_use(id)
+
+
+## Turn the eye to a point over `secs`, and lean in towards it.
+func face(at: Vector3, secs: float, lean := 0.0) -> void:
+	var eye := camera.global_position
+	var to := at - eye
+	var yaw := atan2(-to.x, -to.z)
+	var pitch := clampf(atan2(to.y, Vector2(to.x, to.z).length()), -1.3, 1.3)
+	var t := create_tween().set_parallel(true).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	t.tween_property(self, "rotation:y", rotation.y + wrapf(yaw - rotation.y, -PI, PI), secs)
+	t.tween_property(self, "_pitch", pitch, secs)
+	t.tween_property(self, "_lean", lean, secs)
+
+
+func lean_to(lean: float, secs: float) -> void:
+	create_tween().tween_property(self, "_lean", lean, secs)
 
 
 func place(pos: Vector3, yaw: float) -> void:
@@ -104,6 +127,7 @@ func place(pos: Vector3, yaw: float) -> void:
 	rotation.y = yaw
 	velocity = Vector3.ZERO
 	_pitch = 0.0
+	_lean = 0.0
 	if pos.y < -10.0:
 		# arriving under the floor: already on hands and knees
 		_shape.height = 1.05
@@ -150,6 +174,7 @@ func _physics_process(delta: float) -> void:
 	var down := smoothstep(0.0, 1.0, clampf(_wake * 1.4, 0.0, 1.0))
 	camera.position.y = lerpf(_eye + sin(_bob * 2.0) * bob_amt, 0.24, down)
 	camera.position.x = cos(_bob) * bob_amt * 0.6
+	camera.position.z = -_lean
 	camera.rotation = Vector3(_pitch + down * 0.5, down * 0.35, down * 1.25)
 	_stride += delta * ground_speed
 	if _stride > (0.62 if crouching else 0.78):

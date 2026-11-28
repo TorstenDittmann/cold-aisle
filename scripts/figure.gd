@@ -12,6 +12,7 @@ const AISLE2_END := Kit.CAGE_Z0 - 1.6     # the east aisle stops short at Cage 7
 
 var game: Node
 var active := false
+var _rest := 0.0     # after it has had you, it leaves you alone for a little while
 var hunting := 0.0
 var _goal := Vector3.ZERO
 var _patrol := Vector3.ZERO
@@ -132,7 +133,8 @@ func _physics_process(delta: float) -> void:
 	var k: float = 1.0 + 0.15 * game.story.defy
 	var flat := Vector2(pp.x - position.x, pp.z - position.z)
 	var dist := flat.length()
-	if here:
+	_rest = maxf(0.0, _rest - delta)
+	if here and _rest <= 0.0:
 		var same_lane := absf(pp.x - position.x) < 1.4 or (pp.z < 0.0 and position.z < 0.0) or (pp.z > Kit.AISLE_LEN and position.z > Kit.AISLE_LEN)
 		var heard: bool = pl.jogging and dist < 16.0 * k
 		var seen: bool = pl.torch.visible and (dist < 6.0 or (same_lane and dist < 14.0 * k))
@@ -144,6 +146,11 @@ func _physics_process(delta: float) -> void:
 			_last_seen = pp
 		if dist < 1.0:
 			game.story.caught("figure")
+			# it does not wait where it found you: the way back in is clear
+			position = Vector3(_ax(0), 0, Kit.AISLE_LEN * 0.5)
+			_rest = 15.0
+			_patrol = position
+			hunting = 0.0
 			return
 	hunting = maxf(0.0, hunting - delta)
 	var speed: float = (2.5 + 0.15 * game.story.defy) if hunting > 0.0 else 1.0

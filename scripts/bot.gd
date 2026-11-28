@@ -404,6 +404,9 @@ func _do_use(id: String) -> bool:
 		_fail("nothing to do at " + id)
 		return false
 	await _key(KEY_E)
+	await _secs(0.1)
+	while game.hands.hold:
+		await get_tree().process_frame
 	await _secs(0.4)
 	return true
 

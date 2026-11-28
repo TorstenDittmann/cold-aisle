@@ -27,19 +27,25 @@ void fragment() {
 	float u = (UV.x - 0.5) * 0.62;
 	float v = (1.0 - UV.y) * 2.12;
 	float px = max(fwidth(v), fwidth(u));   // metres per pixel
+	// no two racks are quite alike: some are dark, some have lost their door, some stand empty
+	float rk = h1(rid * 3.17 + 0.5);
+	float dead = step(0.955, rk);
+	float open = step(rk, 0.05);
+	float empty = step(0.9, h1(rid * 9.7 + 2.0));
+	float tint = 0.75 + 0.5 * h1(rid * 5.1 + 7.0);
 	vec3 alb = vec3(0.03);
 	vec3 em = vec3(0.0);
 	float rough = 0.7;
 
 	if (abs(u) > 0.265 || v < 0.07 || v > 2.05) {
 		// door frame
-		alb = vec3(0.12, 0.125, 0.135);
+		alb = vec3(0.12, 0.125, 0.135) * tint;
 		rough = 0.45;
 	} else {
 		float row = (v - 0.08) / 0.0445;
 		float iu = floor(row);
 		float fv = fract(row);
-		float hr = h1(iu * 7.3 + rid * 13.1);
+		float hr = h1(iu * 7.3 + rid * 13.1) * (1.0 - empty);
 		float gap = smoothstep(0.0, 0.08, fv) * smoothstep(1.0, 0.92, fv);
 		float kk = 0.0035 / (0.0035 + px);
 		float y = (fv - 0.5) * 0.0445;
@@ -80,10 +86,18 @@ void fragment() {
 		hq.x += 0.5 * floor(hq.y);
 		float hole = smoothstep(0.36, 0.26, length(fract(hq) - 0.5));
 		float near = smoothstep(0.003, 0.0008, px);
-		alb = mix(alb * 0.6 + vec3(0.045), mix(vec3(0.11), alb * 0.8, hole), near);
-		em *= mix(0.75, 0.6 + 0.4 * hole, near);
+		vec3 behind = alb * 1.5;
+		alb = mix(alb * 0.6 + vec3(0.045), mix(vec3(0.11), alb * 0.8, hole), near) * tint;
+		alb = mix(alb, behind, open);
+		em *= mix(mix(0.75, 0.6 + 0.4 * hole, near), 1.0, open);
+		// a strip of tape and a paper tag, on about one door in eight
+		float tv = 1.1 + 0.6 * h1(rid * 2.3);
+		float tag = step(0.875, h1(rid * 6.1 + 4.0)) * (1.0 - open) * step(abs(u + 0.1 + 0.2 * h1(rid)), 0.055) * step(abs(v - tv), 0.04);
+		alb = mix(alb, vec3(0.5, 0.47, 0.3) * (0.7 + 0.5 * h1(rid * 8.0)), tag);
+		em *= 1.0 - tag;
 		rough = 0.6;
 	}
+	em *= 1.0 - dead * (1.0 - cage);
 	em = mix(em, vec3(0.1, 0.9, 0.78) * dot(em, vec3(0.4)), cage);
 	// teal light bar on the door edge, with a slow idle wave and the story pulse
 	float inbar = step(0.272, u) * step(u, 0.298) * step(0.1, v) * step(v, 2.02);

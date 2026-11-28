@@ -326,9 +326,14 @@ func _swap(r: Room, mesh: MeshInstance3D, m: Material) -> void:
 		(twin as MeshInstance3D).material_override = m
 
 
-func floor_piece(r: Room, x0: float, x1: float, z0: float, z1: float, layers: int, aisle_cx := 1000.0, mirror := 0.6) -> void:
+func floor_piece(r: Room, x0: float, x1: float, z0: float, z1: float, layers: int, aisle_cx := 1000.0, mirror := 0.6, lines: Array = [], blue := 10000.0) -> void:
 	var m := ShaderMaterial.new()
 	m.shader = _floor_shader
+	var lz := [10000.0, 10000.0, 10000.0, 10000.0]
+	for i in mini(4, lines.size()):
+		lz[i] = lines[i]
+	m.set_shader_parameter("line_z", Vector4(lz[0], lz[1], lz[2], lz[3]))
+	m.set_shader_parameter("line_b", blue)
 	m.set_shader_parameter("aisle_x", aisle_cx)
 	m.set_shader_parameter("mirror", mirror)
 	var plane := PlaneMesh.new()
@@ -595,7 +600,7 @@ func _build_corridor() -> void:
 	var x0 := CORR_X0
 	while x0 < CORR_X1:
 		var x1 := minf(CORR_X1, x0 + 14.0)
-		floor_piece(r, x0, x1, CORR_Z0 - 0.1, CORR_Z1 + 0.1, r.layers, 1000.0, 0.4)
+		floor_piece(r, x0, x1, CORR_Z0 - 0.1, CORR_Z1 + 0.1, r.layers, 1000.0, 0.4, [cz + 1.08], cz + 0.9)
 		box(r, Vector3((x0 + x1) * 0.5, CEIL_Y + 0.1, cz), Vector3(x1 - x0, 0.2, 3.4), _ceil_mat)
 		x0 = x1
 	var x := CORR_X0 + 2.6
@@ -660,8 +665,8 @@ func _build_hall(id: String, ox: float, bit0: int, is_b: bool) -> void:
 		var cx := ox + (a - MID) * AISLE_PITCH
 		var x0 := x_w if a == 0 else cx - AISLE_PITCH * 0.5
 		var x1 := x_e if a == AISLES - 1 else cx + AISLE_PITCH * 0.5
-		floor_piece(r, x0, x1, -END_PAD, 0.0, all)
-		floor_piece(r, x0, x1, AISLE_LEN, HALL_Z1, all)
+		floor_piece(r, x0, x1, -END_PAD, 0.0, all, 1000.0, 0.6, [-0.32])
+		floor_piece(r, x0, x1, AISLE_LEN, HALL_Z1, all, 1000.0, 0.6, [AISLE_LEN + 0.32, AISLE_LEN + 2.4, HALL_Z1 - 1.9])
 	# the roof is a long way up and nothing lights it
 	box(r, Vector3((x_w + x_e) * 0.5, HALL_CEIL + 0.1, (HALL_Z1 - END_PAD) * 0.5), Vector3(x_e - x_w + 0.4, 0.2, HALL_Z1 + END_PAD + 0.4), _void_mat, shell)
 	# high-bay fittings on standby: pinpricks that show how far the roof goes
@@ -769,12 +774,10 @@ func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 	front_mesh.material = front_mat
 	# a spool of fibre slack above every rack: yellow in Zone A, teal in Zone B
 	var cable := mat(Color(0.05, 0.5, 0.45) if is_b else Color(0.85, 0.58, 0.04), 0.5)
-	var torus := TorusMesh.new()
-	torus.inner_radius = 0.154
-	torus.outer_radius = 0.226
-	torus.rings = 12
-	torus.ring_segments = 5
-	torus.material = cable
+	var spout := BoxMesh.new()
+	var race := mat(Color(0.03, 0.3, 0.27) if is_b else Color(0.5, 0.35, 0.03), 0.6)
+	spout.size = Vector3(0.07, 0.24, 0.1)
+	spout.material = race
 	var upright := Basis(Vector3.FORWARD, PI * 0.5)
 	var tray := mat(Color(0.1, 0.1, 0.11), 0.5, 0.5)
 
@@ -782,6 +785,8 @@ func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 	var x_e := ox + HALL_HALF_W if a == AISLES - 1 else cx + AISLE_PITCH * 0.5
 	var bays: Array = []
 	h["bays"].append(bays)
+	var jig := RandomNumberGenerator.new()
+	jig.seed = hash("jig %s %d" % [h["id"], a])
 	var i0 := 0
 	while i0 < RACKS:
 		var i1 := mini(count, i0 + BAY)
@@ -793,7 +798,7 @@ func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 		bays.append(bay)
 		_into_v = bay["v"]
 		_into_e = bay["e"]
-		floor_piece(r, x_w, x_e, bz0, bz0 + BAY * RACK_W, layers, cx)
+		floor_piece(r, x_w, x_e, bz0, bz0 + BAY * RACK_W, layers, cx, 0.6, [GAP_Z0 + 0.32, GAP_Z1 - 0.32])
 		if i1 <= i0:
 			i0 += BAY
 			continue   # floor only: this is where Cage 7 stands
@@ -808,9 +813,17 @@ func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 				if i >= GAP0 and i <= GAP1:
 					continue
 				var z := (i + 0.5) * RACK_W
-				bodies.append(Transform3D(Basis(), Vector3(cx + side * ROW_X, RACK_H * 0.5, z)))
-				fronts.append(Transform3D(facing, Vector3(cx + side * (FRONT_X - 0.004), RACK_H * 0.5, z)))
-				spools.append(Transform3D(upright, Vector3(cx + side * 1.305, 2.62, z)))
+				# nobody ever lines a row up exactly: racks sit a little back, a little askew
+				var back := 0.0
+				var skew := 0.0
+				if not (story_aisle and i < 13):
+					back = jig.randf() * 0.025
+					skew = jig.randf_range(-0.014, 0.014)
+				var turn := Basis(Vector3.UP, skew)
+				bodies.append(Transform3D(turn, Vector3(cx + side * (ROW_X + back), RACK_H * 0.5, z)))
+				fronts.append(Transform3D(turn * facing, Vector3(cx + side * (FRONT_X - 0.008 + back), RACK_H * 0.5, z)))
+				if i % 4 == 1:
+					spools.append(Transform3D(Basis(), Vector3(cx + side * 1.25, 2.26, z)))
 				if (story_aisle and i % 4 == 2) or (not story_aisle and i % 10 == 2) or (story_aisle and not is_b and i == 7):
 					var letter := row_letter(a, side)
 					var text := ("ZONE B · ROW %s · %02d" % [letter, i + 1]) if is_b else ("ZONE A · ROW %s · %d" % [letter, 140 + i])
@@ -823,14 +836,14 @@ func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 				else:
 					s0 = minf(GAP_Z1, s1)
 			if s1 - s0 > 0.05:
+				box(r, Vector3(cx + side * 1.27, 2.42, (s0 + s1) * 0.5), Vector3(0.16, 0.11, s1 - s0), race, layers)
 				box(r, Vector3(cx + side * 2.05, 2.72, (s0 + s1) * 0.5), Vector3(1.4, 1.14, s1 - s0), _dark_mat, layers)
 		_mm(r, body_mesh, bodies, layers)
 		_mm(r, front_mesh, fronts, layers)
-		_mm(r, torus, spools, layers)
+		_mm(r, spout, spools, layers)
 		# cable tray down the middle, two runs of fibre on top of it
 		box(r, Vector3(cx, 2.86, bmid), Vector3(0.6, 0.04, blen), tray, layers)
-		for side: float in [-1.0, 1.0]:
-			box(r, Vector3(cx + side * 0.13, 2.925, bmid), Vector3(0.09, 0.09, blen), cable, layers)
+		box(r, Vector3(cx, 2.93, bmid), Vector3(0.3, 0.1, blen), cable, layers)
 		_dress_bay(r, h, a, bay, i0, i1, x_w, x_e)
 		i0 += BAY
 	_into_v = null
@@ -858,7 +871,12 @@ func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 		var words := "%s        %s" % [row_letter(a, 1.0), row_letter(a, -1.0)] if north else "%s        %s" % [row_letter(a, -1.0), row_letter(a, 1.0)]
 		var sign := sign_text(r, words, Vector3(cx, 2.5, sz + out * 0.02), Basis(Vector3.UP, PI) if north else Basis(), 0.0058, colour)
 		sign.layers = int(h["shell"])
-		box(r, Vector3(cx, 2.5, sz), Vector3(2.2, 0.42, 0.03), _void_mat, int(h["shell"]))
+		var board := box(r, Vector3(cx, 2.5, sz), Vector3(2.2, 0.42, 0.03), _void_mat, int(h["shell"]))
+		if jig.randf() < 0.3:
+			# hung a little off level
+			var off := jig.randf_range(-0.05, 0.05)
+			sign.rotate_object_local(Vector3.BACK, off)
+			board.rotation.z = off if not north else -off
 		# and a blade on the end of each row, read from along the cross corridor
 		for side: float in [-1.0, 1.0]:
 			var bx := cx + side * ROW_X
@@ -892,7 +910,17 @@ func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 		haze.position = Vector3(cx, 1.62, z)
 		haze.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		(_into_e if _into_e else r.extra).add_child(haze)
-		h["strips"][a].append({"light": light, "mesh": mesh, "haze": haze, "z": z, "on": true, "full": 1.3 if is_b else 3.4})
+		var strip := {"light": light, "mesh": mesh, "haze": haze, "z": z, "on": true, "full": (1.3 if is_b else 3.4) * (0.7 + 0.3 * jig.randf())}
+		# tubes fail and nobody has got to them yet; one or two hang from a single chain
+		if jig.randf() < 0.09 and not (story_aisle and z < 12.0):
+			strip["dead"] = true
+			strip["on"] = false
+			mesh.material_override = _lamp_off
+			haze.visible = false
+		if jig.randf() < 0.05:
+			mesh.rotation.z = jig.randf_range(-0.16, 0.16)
+			mesh.position.y -= 0.07
+		h["strips"][a].append(strip)
 	_into_v = null
 	_into_e = null
 
@@ -958,7 +986,7 @@ func light_strips(eye: Vector3, delta: float, whole_mid := false) -> void:
 func set_strip(hall: String, a: int, i: int, on: bool) -> void:
 	var h: Dictionary = halls[hall]
 	var s: Dictionary = h["strips"][a][i]
-	if s["on"] == on:
+	if s["on"] == on or s.has("dead"):
 		return
 	s["on"] = on
 	if not on:
@@ -1232,6 +1260,10 @@ func _build_plenum() -> void:
 	var dp := cell_pos(dc.x, dc.y) + Vector3(0, PLENUM_H * 0.5, 0)
 	props["damper"] = prop(r, dp, Vector3(0.12, PLENUM_H, CELL), mat(Color(0.16, 0.16, 0.17), 0.4, 0.8))
 	props["damper_body"] = solid(dp, Vector3(0.12, PLENUM_H, CELL))
+	# it can also be let go from here, so the lit fibre never ends at a shut door
+	props["damper_pull"] = prop(r, dp + Vector3(-0.09, 0.0, 0.5), Vector3(0.06, 0.22, 0.1), glow_mat(AMBER, 2.5))
+	props["damper_glow"] = omni(r, dp + Vector3(-0.5, 0.0, 0.3), AMBER, 0.7, 3.0, r.layers)
+	usable("damper_pull", dp + Vector3(-0.15, -0.05, 0.0), Vector3(0.4, 1.0, CELL - 0.2))
 	# where the last technician stopped
 	var nc: Vector2i = marks["N"]
 	var np := cell_pos(nc.x, nc.y)
@@ -1242,6 +1274,8 @@ func _build_plenum() -> void:
 
 func set_damper(open: bool) -> void:
 	(props["damper"] as Node3D).visible = not open
+	(props["damper_pull"] as Node3D).visible = not open
+	(props["damper_glow"] as Node3D).visible = not open
 	(props["damper_body"] as StaticBody3D).process_mode = Node.PROCESS_MODE_DISABLED if open else Node.PROCESS_MODE_INHERIT
 
 
@@ -1455,14 +1489,9 @@ func _dress_bay(r: Room, h: Dictionary, a: int, bay: Dictionary, i0: int, i1: in
 
 	# services overhead: a duct across the hall, chilled water along the aisle
 	_q(e, "duct", Vector3((x_w + x_e) * 0.5, 4.3, bz0 + 4.0), Vector3(x_e - x_w, 0.5, 0.8))
-	_q(e, "yellow", Vector3((x_w + x_e) * 0.5, 3.74, bz0 + 9.6), Vector3(x_e - x_w, 0.1, 0.22))
-	_q(e, "blue", Vector3(cx - 0.74, 3.6, bmid), Vector3(0.13, 0.13, bz1 - bz0))
-	_q(e, "pipe_r", Vector3(cx + 0.74, 3.6, bmid), Vector3(0.13, 0.13, bz1 - bz0))
-	for k in 3:
-		var hz := bz0 + 1.6 + k * 4.4
-		_q(e, "dark", Vector3(cx, 3.5, hz), Vector3(1.9, 0.04, 0.06))
-		for side: float in [-1.0, 1.0]:
-			_q(e, "dark", Vector3(cx + side * 0.92, 4.6, hz), Vector3(0.025, 2.2, 0.025))
+	_q(e, "yellow", Vector3((x_w + x_e) * 0.5, 3.74, bz0 + 9.6), Vector3(x_e - x_w, 0.16, 0.32))
+	_q(e, "blue", Vector3(cx - 0.74, 3.6, bmid), Vector3(0.2, 0.2, bz1 - bz0))
+	_q(e, "pipe_r", Vector3(cx + 0.74, 3.6, bmid), Vector3(0.2, 0.2, bz1 - bz0))
 
 	# the ends of the rows: a power panel on each, and a door across each hot aisle
 	var ends: Array = []
@@ -1490,7 +1519,6 @@ func _dress_bay(r: Room, h: Dictionary, a: int, bay: Dictionary, i0: int, i1: in
 			_q(e, "dark", Vector3(hx, 1.75, ez - out * 0.17), Vector3(0.3, 0.3, 0.02))
 			solid(Vector3(hx, 1.2, ez - out * 0.2), Vector3(1.0, 2.4, 0.1))
 		# a painted line where the aisle meets the cross corridor
-		_q(e, "line", Vector3((x_w + x_e) * 0.5, 0.004, ez + out * 0.28), Vector3(x_e - x_w, 0.008, 0.08))
 
 	# cooling units along the outer walls
 	if west_wall or east_wall:
@@ -1538,11 +1566,11 @@ func _dress_bay(r: Room, h: Dictionary, a: int, bay: Dictionary, i0: int, i1: in
 				_q(e, "white", Vector3(ix, 1.45, wz + 0.125), Vector3(0.06, 0.2, 0.01))
 			2:
 				_q(e, "white", Vector3(ix, 1.55, wz + 0.02), Vector3(0.9, 0.5, 0.02))
-				sign_text(r, "NO FOOD OR DRINK\nNO LONE WORKING", Vector3(ix, 1.55, wz + 0.035), Basis(), 0.0015, Color(0.08, 0.08, 0.09))
+				sign_text(r, "NO FOOD OR DRINK\nNO LONE WORKING", Vector3(ix, 1.55, wz + 0.06), Basis(), 0.0015, Color(0.08, 0.08, 0.09))
 			3:
 				_q(e, "dark", Vector3(ix, 1.4, wz + 0.05), Vector3(0.2, 0.32, 0.1))
 				_q(e, "steel", Vector3(ix, 1.75, wz + 0.02), Vector3(0.3, 0.12, 0.02))
-				sign_text(r, "OPS 2001", Vector3(ix, 1.75, wz + 0.035), Basis(), 0.0011, Color(0.05, 0.05, 0.05))
+				sign_text(r, "OPS 2001", Vector3(ix, 1.75, wz + 0.06), Basis(), 0.0011, Color(0.05, 0.05, 0.05))
 		if a == MID:
 			var big := sign_text(r, "ZONE %s" % zone, Vector3(ox - 2.2, 2.6, wz + 0.02), Basis(), 0.006, Color(0.3, 0.32, 0.35))
 			big.layers = shell
@@ -1550,16 +1578,12 @@ func _dress_bay(r: Room, h: Dictionary, a: int, bay: Dictionary, i0: int, i1: in
 	# the open floor along the far wall: stores, spares, the gas for the fire system
 	if i0 + BAY >= RACKS:
 		var sz := HALL_Z1
-		_q(e, "line", Vector3((x_w + x_e) * 0.5, 0.004, AISLE_LEN + 2.3), Vector3(x_e - x_w, 0.008, 0.08))
 		if hot_door:
 			_q(e, "concrete", Vector3(cx + AISLE_PITCH * 0.5, HALL_CEIL * 0.5, sz - 0.15), Vector3(0.45, HALL_CEIL, 0.3))
 		if a != MID and not east_wall:
 			var kind := (a + (2 if is_b else 0)) % 5
 			var fz := sz - 0.85
 			# a bay marked out on the floor
-			for sx: float in [-1.0, 1.0]:
-				_q(e, "line", Vector3(cx + sx * 1.5, 0.004, sz - 0.9), Vector3(0.07, 0.008, 1.8))
-			_q(e, "line", Vector3(cx, 0.004, sz - 1.8), Vector3(3.07, 0.008, 0.07))
 			match kind:
 				0:
 					for k in 7:
@@ -1647,9 +1671,8 @@ func _dress_bay(r: Room, h: Dictionary, a: int, bay: Dictionary, i0: int, i1: in
 				_q(d, "dark", Vector3(fx - side * 0.435, sy, z), Vector3(0.012, 0.07, 0.44))
 				_q(d, "led_a", Vector3(fx - side * 0.445, sy, z - 0.17), Vector3(0.012, 0.02, 0.02))
 			5:
-				_q(d, "cable", Vector3(cx + side * 0.2, 2.4, z), Vector3(0.03, 0.95, 0.03))
-				_q(d, "cable", Vector3(cx + side * 0.65, 1.94, z), Vector3(0.9, 0.03, 0.03))
-				_q(d, "cable", Vector3(fx - side * 0.06, 1.72, z), Vector3(0.03, 0.46, 0.03))
+				_q(d, "cable", Vector3(fx - side * 0.05, 2.3, z), Vector3(0.06, 0.5, 0.06))
+				_q(d, "cable", Vector3(fx - side * 0.05, 1.86, z), Vector3(0.08, 0.4, 0.12))
 			6:
 				for t: float in [-1.0, 1.0]:
 					_q(d, "yellow", Vector3(cx + side * 0.62 + t * 0.075, 0.3, z), Vector3(0.02, 0.62, 0.3), Basis(Vector3.BACK, t * 0.24))
@@ -1659,6 +1682,35 @@ func _dress_bay(r: Room, h: Dictionary, a: int, bay: Dictionary, i0: int, i1: in
 				_q(d, "white", Vector3(fx - side * 0.24, 0.7, z), Vector3(0.3, 0.02, 0.4))
 				solid(Vector3(fx - side * 0.24, 0.36, z), Vector3(0.44, 0.72, 0.64))
 
+	# and the small mess: a door left open, a panel leaning, paper, a cup, an offcut of cable
+	for k in 5:
+		var side := -1.0 if rng.randf() < 0.5 else 1.0
+		var i := rng.randi_range(i0 + 1, maxi(i0 + 1, i1 - 2))
+		if (i >= GAP0 - 1 and i <= GAP1 + 1) or (story_aisle and i < 13):
+			continue
+		var z := (i + 0.5) * RACK_W + rng.randf_range(-0.2, 0.2)
+		var fx := cx + side * FRONT_X
+		var spin := Basis(Vector3.UP, rng.randf() * TAU)
+		match rng.randi() % 7:
+			0:
+				# a rack door standing open into the aisle
+				var swing := rng.randf_range(0.9, 1.4) * side
+				var hinge := Vector3(fx - side * 0.01, RACK_H * 0.5, (i + 1.0) * RACK_W)
+				var dturn := Basis(Vector3.UP, swing)
+				_q(d, "panel", hinge + dturn * Vector3(0, 0, -0.3), Vector3(0.025, RACK_H - 0.06, 0.6), dturn)
+			1:
+				_q(d, "panel", Vector3(fx - side * 0.12, 0.5, z), Vector3(0.025, 1.0, 0.56), Basis(Vector3.BACK, side * 0.2))
+			2:
+				_q(d, "white", Vector3(cx + side * rng.randf_range(0.5, 0.95), 0.012, z), Vector3(0.21, 0.004, 0.3), spin)
+				_q(d, "white", Vector3(cx + side * rng.randf_range(0.6, 0.9), 0.014, z + 0.25), Vector3(0.21, 0.004, 0.3), Basis(Vector3.UP, rng.randf() * TAU))
+			3:
+				_q(round, "white", Vector3(fx - side * 0.12, 0.06, z), Vector3(0.08, 0.11, 0.08), Basis(Vector3.BACK, (PI * 0.5) if rng.randf() < 0.5 else 0.0))
+			4:
+				_q(d, "cable", Vector3(cx + side * 0.85, 0.03, z), Vector3(0.05, 0.05, rng.randf_range(0.5, 1.3)), Basis(Vector3.UP, rng.randf_range(-0.5, 0.5)))
+			5:
+				_q(d, "card", Vector3(cx + side * 0.8, 0.008, z), Vector3(0.5, 0.012, 0.36), spin)
+			6:
+				_q(d, "dark", Vector3(fx - side * 0.2, 0.09, z), Vector3(0.3, 0.18, 0.2), Basis(Vector3.UP, rng.randf_range(-0.4, 0.4)))
 	_flush(e, bay["e"], layers | shell)
 	_flush(round, bay["e"], layers | shell, true)
 	_flush(d, bay["d"], layers)
@@ -1684,18 +1736,33 @@ func _dress_corridor() -> void:
 		var e := {}
 		var round := {}
 		# services on the ceiling, a guide line on the floor
-		_q(e, "blue", Vector3(mid, 3.02, zs - 0.3), Vector3(len, 0.14, 0.14))
-		_q(e, "pipe_r", Vector3(mid, 3.02, zs - 0.52), Vector3(len, 0.14, 0.14))
+		_q(e, "blue", Vector3(mid, 3.02, zs - 0.3), Vector3(len, 0.18, 0.18))
+		_q(e, "pipe_r", Vector3(mid, 3.02, zs - 0.52), Vector3(len, 0.18, 0.18))
 		_q(e, "steel", Vector3(mid, 2.96, zn + 0.42), Vector3(len, 0.05, 0.5))
-		_q(e, "cable", Vector3(mid, 3.02, zn + 0.34), Vector3(len, 0.07, 0.1))
-		_q(e, "dark", Vector3(mid, 3.02, zn + 0.52), Vector3(len, 0.07, 0.16))
-		_q(e, "line", Vector3(mid, 0.004, cz + 1.05), Vector3(len, 0.008, 0.1))
-		_q(e, "tote", Vector3(mid, 0.004, cz + 0.9), Vector3(len, 0.008, 0.1))
+		_q(e, "cable", Vector3(mid, 3.03, zn + 0.34), Vector3(len, 0.1, 0.14))
+		_q(e, "dark", Vector3(mid, 3.03, zn + 0.54), Vector3(len, 0.1, 0.18))
 		var bx := x0 + 3.5
 		while bx < x1:
-			_q(e, "dark", Vector3(bx, 3.1, cz), Vector3(0.05, 0.3, 2.9))
-			_q(e, "steel", Vector3(bx, 1.64, zs - 0.04), Vector3(0.05, 3.28, 0.05))
+			_q(e, "dark", Vector3(bx, 3.1, cz), Vector3(0.1, 0.3, 2.9))
+			_q(e, "steel", Vector3(bx, 1.64, zs - 0.05), Vector3(0.09, 3.28, 0.09))
 			bx += 7.0
+		# wear: scuffs at trolley height, damp on the ceiling, a tile gone and its cables hanging
+		var wear := RandomNumberGenerator.new()
+		wear.seed = hash("wear %d" % int(x0))
+		for k in 5:
+			var wx := wear.randf_range(x0 + 0.5, x1 - 0.5)
+			var south_side := wear.randf() < 0.5
+			_q(e, "dark", Vector3(wx, wear.randf_range(0.25, 0.95), (zs - 0.004) if south_side else (zn + 0.004)), Vector3(wear.randf_range(0.5, 1.8), wear.randf_range(0.03, 0.09), 0.012))
+		var cx2 := wear.randf_range(x0 + 2.0, x1 - 2.0)
+		_q(e, "wood", Vector3(cx2, CEIL_Y - 0.004, cz + wear.randf_range(-0.6, 0.6)), Vector3(wear.randf_range(0.6, 1.3), 0.012, wear.randf_range(0.5, 1.0)), Basis(Vector3.UP, wear.randf()))
+		if int(x0 - CORR_X0) % 28 < 14:
+			var gx := wear.randf_range(x0 + 3.0, x1 - 3.0)
+			_q(e, "void", Vector3(gx, CEIL_Y - 0.005, cz - 0.5), Vector3(0.6, 0.02, 0.6))
+			_q(e, "cable", Vector3(gx + 0.1, CEIL_Y - 0.3, cz - 0.4), Vector3(0.05, 0.6, 0.05), Basis(Vector3.BACK, 0.12))
+			_q(e, "dark", Vector3(gx - 0.12, CEIL_Y - 0.22, cz - 0.6), Vector3(0.05, 0.45, 0.05), Basis(Vector3.RIGHT, 0.2))
+			_q(e, "white", Vector3(gx + 0.4, 0.3, zs - 0.2), Vector3(0.03, 0.6, 0.6), Basis(Vector3.BACK, 0.18))
+		else:
+			_q(round, "tote", Vector3(cx2, 0.14, cz - 0.9), Vector3(0.3, 0.28, 0.3))
 		for it: Array in items:
 			var x: float = it[0]
 			if x < x0 or x >= x1:
@@ -1725,8 +1792,8 @@ func _dress_corridor() -> void:
 				"board":
 					_q(e, "wood", Vector3(x, 1.5, zn + 0.02), Vector3(1.7, 1.0, 0.03))
 					for k in 6:
-						_q(e, "white" if k != 2 else "yellow", Vector3(x - 0.62 + (k % 3) * 0.6, 1.72 - (k / 3) * 0.44, zn + 0.04), Vector3(0.22 + (k % 2) * 0.12, 0.3, 0.005), Basis(Vector3.BACK, (k - 2) * 0.03))
-					sign_text(r, "DAYS SINCE LAST INCIDENT   1123", Vector3(x, 2.12, zn + 0.03), Basis(), 0.0013)
+						_q(e, "white" if k != 2 else "yellow", Vector3(x - 0.62 + (k % 3) * 0.6, 1.72 - (k / 3) * 0.44, zn + 0.05), Vector3(0.22 + (k % 2) * 0.12, 0.3, 0.02), Basis(Vector3.BACK, (k - 2) * 0.03))
+					sign_text(r, "DAYS SINCE LAST INCIDENT   1123", Vector3(x, 2.12, zn + 0.02), Basis(), 0.0013)
 				"mop":
 					_q(e, "yellow", Vector3(x, 0.22, zn + 0.3), Vector3(0.4, 0.44, 0.55))
 					_q(e, "wood", Vector3(x + 0.05, 0.9, zn + 0.14), Vector3(0.03, 1.5, 0.03), Basis(Vector3.RIGHT, -0.12))
@@ -1780,8 +1847,8 @@ func _dress_corridor() -> void:
 			match it[1]:
 				"plan":
 					_q(e, "white", Vector3(x, 1.55, zs - 0.02), Vector3(1.1, 0.75, 0.02))
-					_q(e, "panel", Vector3(x, 1.55, zs - 0.035), Vector3(0.9, 0.5, 0.005))
-					_q(e, "led_g", Vector3(x - 0.3, 1.42, zs - 0.04), Vector3(0.04, 0.04, 0.004))
+					_q(e, "panel", Vector3(x, 1.55, zs - 0.04), Vector3(0.9, 0.5, 0.02))
+					_q(e, "led_g", Vector3(x - 0.3, 1.42, zs - 0.055), Vector3(0.04, 0.04, 0.01))
 					var zone := sign_text(r, "DATA HALL · ZONE %s" % ("A" if x < 20.0 else "B"), Vector3(x, 2.5, zs - 0.02), Basis(Vector3.UP, PI), 0.0046, Color(0.36, 0.38, 0.42))
 					zone.layers = r.layers
 				"ext":
@@ -1789,7 +1856,7 @@ func _dress_corridor() -> void:
 					_q(e, "red", Vector3(x, 1.6, zs - 0.02), Vector3(0.22, 0.22, 0.02))
 				"board2":
 					_q(e, "white", Vector3(x, 1.55, zs - 0.02), Vector3(1.8, 1.0, 0.02))
-					sign_text(r, "NIGHTS: one technician on site.\nCall the operations desk before every task.", Vector3(x, 1.6, zs - 0.035), Basis(Vector3.UP, PI), 0.0012, Color(0.08, 0.08, 0.09))
+					sign_text(r, "NIGHTS: one technician on site.\nCall the operations desk before every task.", Vector3(x, 1.6, zs - 0.06), Basis(Vector3.UP, PI), 0.0012, Color(0.08, 0.08, 0.09))
 		_flush(e, r.extra, r.layers)
 		_flush(round, r.extra, r.layers, true)
 		x0 = x1
@@ -1806,3 +1873,7 @@ func _dress_corridor() -> void:
 		var west := sign_text(r, hsign[2], Vector3(x + 0.025, 2.62, cz), Basis(Vector3.UP, PI * 0.5), 0.0026, Color(0.8, 0.88, 1.0))
 		east.double_sided = false
 		west.double_sided = false
+	# one fitting has dropped at one end and nobody has put it back
+	var hang := prop(r, Vector3(-24.6, CEIL_Y - 0.28, cz + 0.3), Vector3(1.2, 0.06, 0.14), _lamp_off)
+	hang.rotation = Vector3(0.0, 0.5, 0.36)
+	prop(r, Vector3(-24.1, CEIL_Y - 0.25, cz + 0.05), Vector3(0.04, 0.5, 0.04), _m("dark"))
