@@ -56,6 +56,7 @@ var _notify: Label
 var _notify_t := 0.0
 var _banner: Label
 var _card: Label
+var _goal: Label
 var _card_t := 0.0
 var _fps: Label
 var _hint: Label
@@ -137,6 +138,7 @@ func _process(delta: float) -> void:
 	if _view_room != "":
 		sound.set_bed(kit.rooms[_view_room].bed)
 	kit.show_rooms(_view_room, _show_all or (in_scene and cine.show_all) or loading)
+	kit.light_strips(cine.cam.global_position if in_scene else player.camera.global_position, delta, cctv.is_open)
 
 	# reticle and the words under it
 	var target: Object = player.target
@@ -160,6 +162,8 @@ func _process(delta: float) -> void:
 	_notify.modulate.a = clampf(_notify_t, 0.0, 1.0) * (0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.01))
 	_card_t -= delta
 	_card.modulate.a = clampf(_card_t * 0.7, 0.0, 1.0) if not in_scene else 0.0
+	_goal.text = story.objective()
+	_goal.visible = started and not in_scene and not terminal.is_open and not cctv.is_open and not _ending.visible
 	_update_hints(delta)
 	if _fps.visible:
 		_fps.text = "%d fps · %d x %d · %d draws · %s" % [
@@ -171,7 +175,7 @@ func footstep(jogging: bool, crouching: bool) -> void:
 	var perforated := false
 	if room == "hall_a" or room == "hall_b":
 		var hall := "a" if room == "hall_a" else "b"
-		for a in 3:
+		for a in Kit.AISLES:
 			if absf(player.global_position.x - kit.aisle_x(hall, a)) < 0.66:
 				perforated = true
 	sound.step(perforated, jogging, crouching)
@@ -650,7 +654,9 @@ func _build_lens_and_hud() -> void:
 	_banner = _label(22, AMBER, HORIZONTAL_ALIGNMENT_CENTER)
 	_anchor(_banner, Control.PRESET_CENTER_TOP, Vector2(0, 40))
 	_card = _label(15, INK, HORIZONTAL_ALIGNMENT_LEFT)
-	_card.position = Vector2(36, 30)
+	_card.position = Vector2(36, 62)
+	_goal = _label(13, QUIET, HORIZONTAL_ALIGNMENT_LEFT)
+	_goal.position = Vector2(36, 28)
 	_fps = _label(12, AMBER, HORIZONTAL_ALIGNMENT_LEFT)
 	_anchor(_fps, Control.PRESET_BOTTOM_LEFT, Vector2(36, -62))
 	_fps.visible = false

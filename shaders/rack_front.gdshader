@@ -18,7 +18,8 @@ varying float wz;
 float h1(float n) { return fract(sin(n * 127.1) * 43758.5453); }
 
 void vertex() {
-	rid = float(INSTANCE_ID) + 1.0 + seed;
+	// numbered by where the rack stands, so a row drawn in several pieces does not repeat
+	rid = floor(MODEL_MATRIX[3].z / 0.62) + floor(MODEL_MATRIX[3].x * 2.0) * 17.0 + 1.0 + seed;
 	wz = (MODEL_MATRIX * vec4(VERTEX, 1.0)).z;
 }
 

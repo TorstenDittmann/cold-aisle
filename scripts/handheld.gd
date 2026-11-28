@@ -141,7 +141,7 @@ func refresh() -> void:
 				else:
 					t += "[color=%s]#%s  closed   %s[/color]\n\n" % [DIM, tk["id"], tk["title"]]
 		1:
-			t = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n[color=%s]HALDEN DC-3 · GROUND FLOOR\nHall A rows A to F · Hall B rows A to F[/color]" % DIM
+			t = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n[color=%s]HALDEN DC-3 · GROUND FLOOR\nHall A rows A to N · Hall B rows A to N[/color]" % DIM
 		2:
 			if not st.flags.has("log"):
 				t = "[color=%s]DOOR LOG\nNo access. Ask the operations desk.[/color]" % DIM
@@ -180,8 +180,13 @@ func refresh() -> void:
 
 func _draw_plan() -> void:
 	var kit: RefCounted = game.kit
-	var s := 7.6
-	var off := Vector2(74, 96)
+	# fit the whole building on the screen
+	var bounds := Rect2()
+	for id: String in kit.rooms:
+		if id != "plenum":
+			bounds = kit.rooms[id].rect if bounds.size == Vector2.ZERO else bounds.merge(kit.rooms[id].rect)
+	var s := minf(_plan.size.x / bounds.size.x, (_plan.size.y - 20.0) / bounds.size.y)
+	var off := -bounds.position * s + Vector2((_plan.size.x - bounds.size.x * s) * 0.5, 4.0)
 	var line := Color(0.5, 0.53, 0.57)
 	var font: Font = _head.get_theme_font("font")
 	for id: String in kit.rooms:
@@ -190,9 +195,9 @@ func _draw_plan() -> void:
 		var r: Rect2 = kit.rooms[id].rect
 		var rr := Rect2(off + r.position * s, r.size * s)
 		_plan.draw_rect(rr, line, false, 1.0)
-		var name: String = {"dock": "DOCK", "mantrap": "TRAP", "security": "SECURITY", "mmr": "MEET-ME", "ups": "UPS",
-			"corridor": "", "hall_a": "HALL A", "hall_b": "HALL B", "chillers": "CHILL"}[id]
-		_plan.draw_string(font, rr.position + Vector2(4, 13), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, line)
+		var name: String = {"dock": "DOCK", "mantrap": "", "security": "DESK", "mmr": "MMR", "ups": "UPS",
+			"corridor": "", "hall_a": "HALL A", "hall_b": "HALL B", "chillers": "CH"}[id]
+		_plan.draw_string(font, rr.position + Vector2(3, 11), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, line)
 	for id: String in kit.doors:
 		var d: Node3D = kit.doors[id]
 		_plan.draw_rect(Rect2(off + Vector2(d.position.x, d.position.z) * s - Vector2(3, 2), Vector2(6, 4)), Color(0.035, 0.04, 0.046), true)
@@ -202,3 +207,10 @@ func _draw_plan() -> void:
 		_plan.draw_circle(off + Vector2(p.x, p.z) * s, 3.5, Color(1, 1, 1, blink))
 	else:
 		_plan.draw_string(font, Vector2(0, 322), "NO POSITION FIX", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1.0, 0.7, 0.28))
+	# where the open ticket is
+	var goal: Variant = game.story.goal_pos()
+	if goal != null:
+		var g: Vector2 = off + Vector2(goal.x, goal.z) * s
+		var amber := Color(1.0, 0.7, 0.28)
+		_plan.draw_line(g - Vector2(5, 5), g + Vector2(5, 5), amber, 1.5)
+		_plan.draw_line(g - Vector2(5, -5), g + Vector2(5, -5), amber, 1.5)

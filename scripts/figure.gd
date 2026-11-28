@@ -6,7 +6,9 @@ extends Node3D
 const Kit := preload("res://scripts/build.gd")
 const Z_N := -1.3
 const Z_S := Kit.AISLE_LEN + 1.3
-const AISLE2_END := 11.6     # the east aisle stops short at Cage 7
+const N := Kit.AISLES
+const LAST := Kit.AISLES - 1
+const AISLE2_END := Kit.CAGE_Z0 - 1.6     # the east aisle stops short at Cage 7
 
 var game: Node
 var active := false
@@ -52,11 +54,11 @@ func _ready() -> void:
 
 
 func _ax(a: int) -> float:
-	return Kit.HALL_B_X + (a - 1) * Kit.AISLE_PITCH
+	return Kit.HALL_B_X + (a - Kit.MID) * Kit.AISLE_PITCH
 
 
 func reset() -> void:
-	position = Vector3(_ax(1), 0, Z_S)
+	position = Vector3(_ax(Kit.MID), 0, Z_S)
 	_patrol = position
 	_goal = position
 	hunting = 0.0
@@ -65,12 +67,12 @@ func reset() -> void:
 ## Move away from the doors, so that walking in is never an instant catch.
 func back_off() -> void:
 	if position.z < 8.0:
-		position = Vector3(_ax(randi() % 2), 0, Z_S)
+		position = Vector3(_ax(Kit.MID - 1 + randi() % 2), 0, Kit.AISLE_LEN * 0.5 if position.z < 8.0 and randf() < 0.5 else Z_S)
 		_patrol = position
 		hunting = 0.0
 
 
-func _nearest_aisle(x: float, limit := 2) -> int:
+func _nearest_aisle(x: float, limit := LAST) -> int:
 	var best := 0
 	for a in limit + 1:
 		if absf(x - _ax(a)) < absf(x - _ax(best)):
@@ -79,7 +81,7 @@ func _nearest_aisle(x: float, limit := 2) -> int:
 
 
 func _aisle_end(a: int) -> float:
-	return AISLE2_END if a == 2 else Z_S
+	return AISLE2_END if a == LAST else Z_S
 
 
 ## The next straight leg toward `t`, keeping to aisles and cross corridors.
@@ -87,18 +89,18 @@ func _route(t: Vector3) -> Vector3:
 	var p := position
 	var ta := _nearest_aisle(t.x)
 	var t_north := t.z <= 0.0
-	var t_south := t.z >= Kit.AISLE_LEN and ta < 2
+	var t_south := t.z >= Kit.AISLE_LEN and ta < LAST
 	var on_n := absf(p.z - Z_N) < 0.06
 	var on_s := absf(p.z - Z_S) < 0.06
 	if on_n or on_s:
 		var zc := Z_N if on_n else Z_S
 		if (on_n and t_north) or (on_s and t_south):
-			return Vector3(clampf(t.x, _ax(0), _ax(2 if on_n else 1)), 0, zc)
+			return Vector3(clampf(t.x, _ax(0), _ax(LAST if on_n else LAST - 1)), 0, zc)
 		var via := ta
-		if on_s and (ta == 2 or t_north):
-			via = _nearest_aisle(p.x, 1)
+		if on_s and (ta == LAST or t_north):
+			via = _nearest_aisle(p.x, LAST - 1)
 		elif on_n and t_south:
-			via = _nearest_aisle(p.x, 1)
+			via = _nearest_aisle(p.x, LAST - 1)
 		if absf(p.x - _ax(via)) > 0.06:
 			return Vector3(_ax(via), 0, zc)
 		if t_north:
@@ -110,9 +112,9 @@ func _route(t: Vector3) -> Vector3:
 	var a := _nearest_aisle(p.x)
 	if ta == a and not t_north and not t_south:
 		return Vector3(_ax(a), 0, clampf(t.z, Z_N, _aisle_end(a)))
-	if t_south and a < 2:
+	if t_south and a < LAST:
 		return Vector3(_ax(a), 0, Z_S)
-	if t_north or a == 2 or ta == 2:
+	if t_north or a == LAST or ta == LAST:
 		return Vector3(_ax(a), 0, Z_N)
 	# another aisle: leave by whichever end is nearer to both of us
 	var by_s := (Z_S - p.z) + (Z_S - t.z)
@@ -134,7 +136,7 @@ func _physics_process(delta: float) -> void:
 		var same_lane := absf(pp.x - position.x) < 1.4 or (pp.z < 0.0 and position.z < 0.0) or (pp.z > Kit.AISLE_LEN and position.z > Kit.AISLE_LEN)
 		var heard: bool = pl.jogging and dist < 16.0 * k
 		var seen: bool = pl.torch.visible and (dist < 6.0 or (same_lane and dist < 14.0 * k))
-		var close: bool = dist < (1.7 if pl.crouching else 3.2)
+		var close: bool = dist < (1.6 if pl.crouching else 2.7)
 		if heard or seen or close:
 			if hunting <= 0.0:
 				game.sound.play("stall", -4.0)
@@ -151,7 +153,8 @@ func _physics_process(delta: float) -> void:
 	step.y = 0.0
 	if step.length() < 0.05:
 		if hunting <= 0.0:
-			var a := randi() % 3
+			# it keeps to the part of the hall you have business in
+			var a := Kit.MID - 2 + randi() % 4
 			_patrol = Vector3(_ax(a), 0, [Z_N, _aisle_end(a), Kit.AISLE_LEN * 0.5][randi() % 3])
 	else:
 		position += step.normalized() * minf(step.length(), speed * delta)

@@ -111,7 +111,7 @@ func _build_map() -> void:
 	var ap := Kit.AISLE_PITCH
 	var cz := -4.3
 	var corridor := [["c_dock", -6.0], ["c_a1", -ap], ["c_trap", -0.5], ["c_sec", 5.0], ["c_a2", ap], ["c_b1", bx - ap],
-		["c_mmr", 13.5], ["c_ups", 22.0], ["c_b2", bx + ap], ["c_ch", 30.0]]
+		["c_mmr", 13.5], ["c_ups", 22.0], ["c_b2", bx + ap], ["c_ch", 30.0 + Kit.CH_DX]]
 	corridor.sort_custom(func(a: Array, b: Array) -> bool: return a[1] < b[1])
 	for i in corridor.size():
 		_nodes[corridor[i][0]] = Vector2(corridor[i][1], cz)
@@ -121,9 +121,9 @@ func _build_map() -> void:
 		"dock_n": Vector2(-6.0, -7.4), "dock": Vector2(-6.0, -9.2), "dock_e": Vector2(-3.5, -9.0),
 		"trap": Vector2(-0.5, -9.0), "trap_n": Vector2(-0.5, -7.4),
 		"sec_d": Vector2(5.0, -7.4), "mmr_d": Vector2(13.5, -7.4), "ups_d": Vector2(22.0, -7.4),
-		"ch": Vector2(30.0, -1.3), "ch_m": Vector2(31.6, 3.3),
-		"cage_n": Vector2(bx + ap, 14.2), "cage_m": Vector2(bx + 6.5, 15.4), "cage_c": Vector2(bx + 6.5, 17.2),
-		"cage_s": Vector2(bx + 6.5, 20.6), "cage": Vector2(bx + 4.4, 20.6),
+		"ch": Vector2(30.0 + Kit.CH_DX, -1.3), "ch_m": Vector2(31.6 + Kit.CH_DX, 3.3),
+		"cage_n": Vector2(bx + ap, Kit.CAGE_Z0 + 1.0), "cage_m": Vector2(bx + 6.5, Kit.CAGE_Z0 + 2.2), "cage_c": Vector2(bx + 6.5, Kit.CONSOLE_Z),
+		"cage_s": Vector2(bx + 6.5, Kit.HALL_Z1 - 1.84), "cage": Vector2(bx + 4.4, Kit.HALL_Z1 - 1.84),
 	}
 	for k: String in more:
 		_nodes[k] = more[k]
@@ -152,10 +152,10 @@ func _build_map() -> void:
 		"handover": Vector2(6.2, -9.9), "handheld": Vector2(3.8, -9.9), "desk_bin": Vector2(7.9, -10.0), "cctv": Vector2(5.0, -10.0),
 		"rack_a147": Vector2(0.1, 7.5 * Kit.RACK_W), "rack_b07": Vector2(bx + 0.1, 6.5 * Kit.RACK_W),
 		"ups_log": Vector2(19.4, -8.0), "breaker_b2": Vector2(24.6, -9.0),
-		"fire_panel_a": Vector2(2.0, Kit.HALL_Z1 - 1.3), "chiller2": Vector2(31.9, 2.8), "note1": Vector2(31.9, 4.4),
+		"fire_panel_a": Vector2(2.0, Kit.HALL_Z1 - 1.3), "chiller2": Vector2(31.9 + Kit.CH_DX, 2.8), "note1": Vector2(31.9 + Kit.CH_DX, 4.4),
 		"note2": Vector2(11.0 + 5 * Kit.RACK_W, -9.5), "panel7": Vector2(11.0 + 4 * Kit.RACK_W, -9.5),
 		"damper": Vector2(16.8, -9.0), "hatch_mmr": Vector2(16.5, -8.4),
-		"console7": Vector2(bx + 6.5, 17.2), "cage_gate": Vector2(bx + ap, 14.4), "dock_shutter": Vector2(-5.6, -10.3),
+		"console7": Vector2(bx + 6.5, Kit.CONSOLE_Z), "cage_gate": Vector2(bx + ap, Kit.CAGE_Z0 + 1.2), "dock_shutter": Vector2(-5.6, -10.3),
 	}
 
 

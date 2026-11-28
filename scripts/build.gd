@@ -19,18 +19,27 @@ const FRONT_X := 1.1           # rack fronts face the aisle here
 const CEIL_Y := 3.28
 const STRIP_GAP := 3.1
 const END_PAD := 2.6           # depth of the cross corridor at each end of a hall
-const HALL_HALF_W := 9.0
-const RACKS := 32
+const HALL_HALF_W := 9.0        # from a hall's reference aisle to its east wall
+const AISLES := 7              # cold aisles in each hall
+const MID := 5                 # the aisle between a hall's two doors; the halls run on west of it
+const HALL_WEST := MID * AISLE_PITCH + 3.56   # from the reference aisle to the west wall
+const HALL_CEIL := 9.0
+const RACKS := 80
+const BAY := 20                # racks drawn as one piece, so no piece sits under too many lights
 const AISLE_LEN := RACKS * RACK_W
 const HALL_Z1 := AISLE_LEN + END_PAD
-const HALL_B_X := 18.4
+const HALL_B_X := 9.4 + HALL_WEST
+const CH_DX := HALL_B_X - 18.4   # how far east the chiller plant sits
+const CAGE_Z0 := AISLE_LEN - 6.64
+const CONSOLE_Z := CAGE_Z0 + 4.0
 const DOOR_W := 1.1
 const DOOR_H := 2.1
 const ROOM_Z0 := -12.0
 const ROOM_Z1 := -6.0
 const CORR_Z0 := -5.8
 const CORR_Z1 := -2.8
-const CORR_X1 := 32.0
+const CORR_X0 := -HALL_WEST
+const CORR_X1 := 32.0 + CH_DX
 const PLENUM_Y := -30.0
 const PLENUM_Z := 60.0
 const PLENUM_H := 1.2
@@ -88,6 +97,11 @@ var _dark_mat: StandardMaterial3D
 var _hall_wall_mat: StandardMaterial3D
 var _ceil_mat: StandardMaterial3D
 var _wall_now: StandardMaterial3D
+var _wall_h := CEIL_Y
+var _void_mat: StandardMaterial3D
+var _lights_t := 0.0
+var _into_v: Node3D     # while a bay of racks is being built, its parts go in here
+var _into_e: Node3D
 var _floor_shader: Shader
 var _front_shader: Shader
 var _haze_shader: Shader
@@ -114,14 +128,17 @@ func build(game: Node, world_node: Node3D) -> void:
 	_room("security", "SECURITY DESK", 1.2, 9.0, ROOM_Z0, ROOM_Z1, 11, "bed_room")
 	_room("mmr", "MEET-ME ROOM", 9.2, 18.0, ROOM_Z0, ROOM_Z1, 12, "bed_room")
 	_room("ups", "UPS ROOM", 18.2, 26.0, ROOM_Z0, ROOM_Z1, 13, "bed_plant")
-	_room("corridor", "CORRIDOR", -9.0, CORR_X1, CORR_Z0, CORR_Z1, 8, "bed_room")
-	_room("hall_a", "DATA HALL A", -9.0, 9.0, -END_PAD, HALL_Z1, 3, "bed_hall_a")
-	_room("hall_b", "DATA HALL B", 9.4, 27.4, -END_PAD, HALL_Z1, 7, "bed_hall_b")
-	_room("chillers", "CHILLER PLANT", 27.8, 36.0, -END_PAD, 10.0, 14, "bed_plant")
+	_room("corridor", "CORRIDOR", CORR_X0, CORR_X1, CORR_Z0, CORR_Z1, 8, "bed_room")
+	_room("hall_a", "DATA HALL A", -HALL_WEST, HALL_HALF_W, -END_PAD, HALL_Z1, 3, "bed_hall_a")
+	_room("hall_b", "DATA HALL B", HALL_B_X - HALL_WEST, HALL_B_X + HALL_HALF_W, -END_PAD, HALL_Z1, 7, "bed_hall_b")
+	_room("chillers", "CHILLER PLANT", 27.8 + CH_DX, 36.0 + CH_DX, -END_PAD, 10.0, 14, "bed_plant")
 	_room("plenum", "PLENUM", -1.0, 17.0 * CELL, PLENUM_Z - 1.0, PLENUM_Z + 11.0 * CELL, 15, "bed_plenum")
 
 	# one slab of collision under the whole ground floor
-	solid(Vector3(13.5, -0.1, 5.0), Vector3(48.0, 0.2, 38.0))
+	solid(Vector3(13.5, -0.1, 20.5), Vector3(96.0, 0.2, 70.0))
+	_void_mat = StandardMaterial3D.new()
+	_void_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_void_mat.albedo_color = Color(0.008, 0.01, 0.013)
 	_build_walls()
 	_build_doors()
 	_build_small_rooms()
@@ -182,12 +199,12 @@ func box_in(parent: Node3D, pos: Vector3, size: Vector3, m: Material, layers: in
 
 ## A box that is part of the room and shows in the floor's reflection.
 func box(r: Room, pos: Vector3, size: Vector3, m: Material, layers := -1) -> MeshInstance3D:
-	return box_in(r.visual, pos, size, m, r.layers if layers < 0 else layers)
+	return box_in(_into_v if _into_v else r.visual, pos, size, m, r.layers if layers < 0 else layers)
 
 
 ## A small prop: drawn once, not reflected.
 func prop(r: Room, pos: Vector3, size: Vector3, m: Material, layers := -1) -> MeshInstance3D:
-	return box_in(r.extra, pos, size, m, r.layers if layers < 0 else layers)
+	return box_in(_into_e if _into_e else r.extra, pos, size, m, r.layers if layers < 0 else layers)
 
 
 func solid(pos: Vector3, size: Vector3) -> StaticBody3D:
@@ -232,7 +249,7 @@ func omni(r: Room, pos: Vector3, colour: Color, energy: float, rng: float, mask:
 	l.light_specular = 0.6
 	l.light_cull_mask = mask
 	l.position = pos
-	r.extra.add_child(l)
+	(_into_e if _into_e else r.extra).add_child(l)
 	return l
 
 
@@ -263,7 +280,19 @@ func set_lamp(id: String, i: int, on: bool) -> void:
 
 
 func _twin(r: Room, n: Node3D) -> Node3D:
-	return r.mirror.get_child(n.get_index()) as Node3D if r.mirror and n.get_parent() == r.visual else null
+	if r.mirror == null:
+		return null
+	var path: Array[int] = []
+	var at: Node = n
+	while at != null and at != r.visual:
+		path.push_front(at.get_index())
+		at = at.get_parent()
+	if at == null:
+		return null
+	var m: Node = r.mirror
+	for i: int in path:
+		m = m.get_child(i)
+	return m as Node3D
 
 
 ## Raise the loading dock shutter by hand: 0 is shut, 1 is open to the morning.
@@ -286,8 +315,9 @@ func set_shutter(k: float) -> void:
 ## Change a material on a mesh and on its reflection.
 func _swap(r: Room, mesh: MeshInstance3D, m: Material) -> void:
 	mesh.material_override = m
-	if r.mirror and mesh.get_parent() == r.visual:
-		(r.mirror.get_child(mesh.get_index()) as MeshInstance3D).material_override = m
+	var twin := _twin(r, mesh)
+	if twin:
+		(twin as MeshInstance3D).material_override = m
 
 
 func floor_piece(r: Room, x0: float, x1: float, z0: float, z1: float, layers: int, aisle_cx := 1000.0, mirror := 0.6) -> void:
@@ -302,7 +332,7 @@ func floor_piece(r: Room, x0: float, x1: float, z0: float, z1: float, layers: in
 	mi.material_override = m
 	mi.position = Vector3((x0 + x1) * 0.5, 0, (z0 + z1) * 0.5)
 	mi.layers = layers
-	r.extra.add_child(mi)
+	(_into_e if _into_e else r.extra).add_child(mi)
 
 
 func sign_text(r: Room, text: String, pos: Vector3, facing: Basis, px := 0.0011, colour := Color(0.75, 0.78, 0.82)) -> Label3D:
@@ -316,7 +346,7 @@ func sign_text(r: Room, text: String, pos: Vector3, facing: Basis, px := 0.0011,
 	label.shaded = false
 	label.layers = r.layers
 	label.transform = Transform3D(facing, pos)
-	r.extra.add_child(label)
+	(_into_e if _into_e else r.extra).add_child(label)
 	return label
 
 
@@ -331,8 +361,16 @@ func _shared(a: String, b: String) -> Node3D:
 func _wall_piece(parent: Node3D, pos: Vector3, size: Vector3, layers: int) -> void:
 	if size.x <= 0.01 or size.z <= 0.01:
 		return
-	box_in(parent, pos, size, _wall_now if _wall_now else _wall_mat, layers)
 	solid(pos, size)
+	# a long wall is drawn in lengths, so that no one piece sits under too many lights
+	var along_x := size.x > size.z
+	var length := size.x if along_x else size.z
+	var n := maxi(1, int(ceil(length / 11.0)))
+	for i in n:
+		var off := (i + 0.5) * length / n - length * 0.5
+		var p := pos + (Vector3(off, 0, 0) if along_x else Vector3(0, 0, off))
+		var sz := Vector3(length / n, size.y, size.z) if along_x else Vector3(size.x, size.y, length / n)
+		box_in(parent, p, sz, _wall_now if _wall_now else _wall_mat, layers)
 
 
 ## A wall running east-west at depth z, with a door opening centred on each x in `holes`.
@@ -342,10 +380,10 @@ func wall_x(parent: Node3D, z: float, x0: float, x1: float, holes: Array, layers
 	var a := x0
 	for hx: float in cuts:
 		var e := hx - DOOR_W * 0.5
-		_wall_piece(parent, Vector3((a + e) * 0.5, CEIL_Y * 0.5, z), Vector3(e - a, CEIL_Y, thick), layers)
-		_wall_piece(parent, Vector3(hx, (DOOR_H + CEIL_Y) * 0.5, z), Vector3(DOOR_W, CEIL_Y - DOOR_H, thick), layers)
+		_wall_piece(parent, Vector3((a + e) * 0.5, _wall_h * 0.5, z), Vector3(e - a, _wall_h, thick), layers)
+		_wall_piece(parent, Vector3(hx, (DOOR_H + _wall_h) * 0.5, z), Vector3(DOOR_W, _wall_h - DOOR_H, thick), layers)
 		a = hx + DOOR_W * 0.5
-	_wall_piece(parent, Vector3((a + x1) * 0.5, CEIL_Y * 0.5, z), Vector3(x1 - a, CEIL_Y, thick), layers)
+	_wall_piece(parent, Vector3((a + x1) * 0.5, _wall_h * 0.5, z), Vector3(x1 - a, _wall_h, thick), layers)
 
 
 ## A wall running north-south at x, with a door opening centred on each z in `holes`.
@@ -355,10 +393,10 @@ func wall_z(parent: Node3D, x: float, z0: float, z1: float, holes: Array, layers
 	var a := z0
 	for hz: float in cuts:
 		var e := hz - DOOR_W * 0.5
-		_wall_piece(parent, Vector3(x, CEIL_Y * 0.5, (a + e) * 0.5), Vector3(thick, CEIL_Y, e - a), layers)
-		_wall_piece(parent, Vector3(x, (DOOR_H + CEIL_Y) * 0.5, hz), Vector3(thick, CEIL_Y - DOOR_H, DOOR_W), layers)
+		_wall_piece(parent, Vector3(x, _wall_h * 0.5, (a + e) * 0.5), Vector3(thick, _wall_h, e - a), layers)
+		_wall_piece(parent, Vector3(x, (DOOR_H + _wall_h) * 0.5, hz), Vector3(thick, _wall_h - DOOR_H, DOOR_W), layers)
 		a = hz + DOOR_W * 0.5
-	_wall_piece(parent, Vector3(x, CEIL_Y * 0.5, (a + z1) * 0.5), Vector3(thick, CEIL_Y, z1 - a), layers)
+	_wall_piece(parent, Vector3(x, _wall_h * 0.5, (a + z1) * 0.5), Vector3(thick, _wall_h, z1 - a), layers)
 
 
 func _l(id: String) -> int:
@@ -366,7 +404,7 @@ func _l(id: String) -> int:
 
 
 func aisle_x(hall: String, a: int) -> float:
-	return float(halls[hall]["ox"]) + (a - 1) * AISLE_PITCH
+	return float(halls[hall]["ox"]) + (a - MID) * AISLE_PITCH
 
 
 # ---------------------------------------------------------------- walls and doors
@@ -383,6 +421,7 @@ func _build_walls() -> void:
 		wall_x(r.visual, ROOM_Z0 - 0.1, x0 - 0.2, x1 + 0.2, [], r.layers)
 		wall_x(_shared(id, "corridor"), ROOM_Z1 + 0.1, x0 - 0.1, x1 + 0.1, [door_x[id]], r.layers | corr)
 	wall_x((rooms["corridor"] as Room).visual, ROOM_Z1 + 0.1, 26.1, CORR_X1 + 0.2, [], corr)
+	wall_x((rooms["corridor"] as Room).visual, ROOM_Z1 + 0.1, CORR_X0 - 0.2, -9.1, [], corr)
 	wall_z((rooms["dock"] as Room).visual, -9.1, ROOM_Z0, ROOM_Z1, [], _l("dock"))
 	wall_z(_shared("dock", "mantrap"), -2.1, ROOM_Z0, ROOM_Z1, [-9.0], _l("dock") | _l("mantrap"))
 	wall_z(_shared("mantrap", "security"), 1.1, ROOM_Z0, ROOM_Z1, [], _l("mantrap") | _l("security"))
@@ -390,25 +429,35 @@ func _build_walls() -> void:
 	wall_z(_shared("mmr", "ups"), 18.1, ROOM_Z0, ROOM_Z1, [], _l("mmr") | _l("ups"))
 	wall_z((rooms["ups"] as Room).visual, 26.1, ROOM_Z0, ROOM_Z1, [], _l("ups"))
 	# corridor ends
-	wall_z((rooms["corridor"] as Room).visual, -9.1, CORR_Z0 - 0.2, CORR_Z1 + 0.2, [], corr)
+	wall_z((rooms["corridor"] as Room).visual, CORR_X0 - 0.1, CORR_Z0 - 0.2, CORR_Z1 + 0.2, [], corr)
 	wall_z((rooms["corridor"] as Room).visual, CORR_X1 + 0.1, CORR_Z0 - 0.2, CORR_Z1 + 0.2, [], corr)
 	# corridor to the halls and the plant
-	wall_x(_shared("corridor", "hall_a"), -END_PAD - 0.1, -9.2, 9.0, [-AISLE_PITCH, AISLE_PITCH], corr | _l("hall_a") | 7)
-	wall_x(_shared("corridor", "hall_b"), -END_PAD - 0.1, 9.4, 27.4, [HALL_B_X - AISLE_PITCH, HALL_B_X + AISLE_PITCH], corr | _l("hall_b") | (7 << 4))
-	wall_x(_shared("corridor", "chillers"), -END_PAD - 0.1, 27.8, 36.2, [30.0], corr | _l("chillers"))
-	# hall shells
+	var ax0 := -HALL_WEST
+	var bx0 := HALL_B_X - HALL_WEST
+	var bx1 := HALL_B_X + HALL_HALF_W
+	var cx0 := 27.8 + CH_DX
+	wall_x(_shared("corridor", "hall_a"), -END_PAD - 0.1, ax0 - 0.2, 9.0, [-AISLE_PITCH, AISLE_PITCH], corr | _l("hall_a") | 7)
+	wall_x(_shared("corridor", "hall_b"), -END_PAD - 0.1, bx0, bx1, [HALL_B_X - AISLE_PITCH, HALL_B_X + AISLE_PITCH], corr | _l("hall_b") | (7 << 4))
+	wall_x(_shared("corridor", "chillers"), -END_PAD - 0.1, cx0, cx0 + 8.4, [30.0 + CH_DX], corr | _l("chillers"))
+	# hall shells: tall, dark, and a long way off
 	var ha: Room = rooms["hall_a"]
 	var hb: Room = rooms["hall_b"]
 	var ch: Room = rooms["chillers"]
 	_wall_now = _hall_wall_mat
-	wall_z(ha.visual, -9.1, -END_PAD, HALL_Z1, [], ha.layers)
+	_wall_h = HALL_CEIL
+	wall_z(ha.visual, ax0 - 0.1, -END_PAD, HALL_Z1, [], ha.layers)
 	wall_z(_shared("hall_a", "hall_b"), 9.2, -END_PAD - 0.2, HALL_Z1 + 0.2, [], ha.layers | hb.layers, 0.4)
-	wall_z(_shared("hall_b", "chillers"), 27.6, -END_PAD - 0.2, HALL_Z1 + 0.2, [], hb.layers | ch.layers, 0.4)
-	wall_x(ha.visual, HALL_Z1 + 0.1, -9.2, 9.0, [], ha.layers)
-	wall_x(hb.visual, HALL_Z1 + 0.1, 9.4, 27.4, [], hb.layers)
+	wall_z(_shared("hall_b", "chillers"), bx1 + 0.2, -END_PAD - 0.2, HALL_Z1 + 0.2, [], hb.layers | ch.layers, 0.4)
+	wall_x(ha.visual, HALL_Z1 + 0.1, ax0 - 0.2, 9.0, [], ha.layers)
+	wall_x(hb.visual, HALL_Z1 + 0.1, bx0, bx1, [], hb.layers)
+	# the halls rise above the corridor that feeds them
+	var up := HALL_CEIL - CEIL_Y
+	box_in(ha.visual, Vector3((ax0 + 9.0) * 0.5, CEIL_Y + up * 0.5, -END_PAD - 0.05), Vector3(9.0 - ax0, up, 0.1), _void_mat, ha.layers)
+	box_in(hb.visual, Vector3((bx0 + bx1) * 0.5, CEIL_Y + up * 0.5, -END_PAD - 0.05), Vector3(bx1 - bx0, up, 0.1), _void_mat, hb.layers)
 	_wall_now = null
-	wall_x(ch.visual, 10.1, 27.8, 36.2, [], ch.layers)
-	wall_z(ch.visual, 36.1, -END_PAD, 10.0, [], ch.layers)
+	_wall_h = CEIL_Y
+	wall_x(ch.visual, 10.1, cx0, cx0 + 8.4, [], ch.layers)
+	wall_z(ch.visual, cx0 + 8.3, -END_PAD, 10.0, [], ch.layers)
 
 
 func _door(id: String, title: String, pos: Vector3, along_x: bool, a: String, b: String) -> void:
@@ -430,7 +479,7 @@ func _build_doors() -> void:
 	_door("hall_a2", "HALL A-2", Vector3(AISLE_PITCH, 0, -END_PAD - 0.1), true, "corridor", "hall_a")
 	_door("hall_b1", "HALL B-1", Vector3(HALL_B_X - AISLE_PITCH, 0, -END_PAD - 0.1), true, "corridor", "hall_b")
 	_door("hall_b2", "HALL B-2", Vector3(HALL_B_X + AISLE_PITCH, 0, -END_PAD - 0.1), true, "corridor", "hall_b")
-	_door("chillers", "CHILLER PLANT", Vector3(30.0, 0, -END_PAD - 0.1), true, "corridor", "chillers")
+	_door("chillers", "CHILLER PLANT", Vector3(30.0 + CH_DX, 0, -END_PAD - 0.1), true, "corridor", "chillers")
 
 
 # ---------------------------------------------------------------- small rooms
@@ -538,13 +587,13 @@ func _build_corridor() -> void:
 	var r: Room = rooms["corridor"]
 	var cz := (CORR_Z0 + CORR_Z1) * 0.5
 	# floor and ceiling in three lengths, so no single mesh sits under every light
-	var cuts := [-9.0, 5.0, 19.0, CORR_X1]
-	for i in 3:
-		var x0: float = cuts[i]
-		var x1: float = cuts[i + 1]
+	var x0 := CORR_X0
+	while x0 < CORR_X1:
+		var x1 := minf(CORR_X1, x0 + 14.0)
 		floor_piece(r, x0, x1, CORR_Z0 - 0.1, CORR_Z1 + 0.1, r.layers, 1000.0, 0.4)
 		box(r, Vector3((x0 + x1) * 0.5, CEIL_Y + 0.1, cz), Vector3(x1 - x0, 0.2, 3.4), _ceil_mat)
-	var x := -6.5
+		x0 = x1
+	var x := CORR_X0 + 2.6
 	while x < CORR_X1:
 		lamp(r, x, cz, 3.6, 6.0, false)
 		x += 5.4
@@ -585,25 +634,52 @@ func _build_hall(id: String, ox: float, bit0: int, is_b: bool) -> void:
 	var r: Room = rooms["hall_" + id]
 	var all := 7 << bit0
 	var shell := r.layers
+	var racks: Array = []
+	var strips: Array = []
+	for a in AISLES:
+		racks.append(RACKS)
+		strips.append([])
+	if is_b:
+		racks[AISLES - 1] = RACKS - 12   # Cage 7 stands at the end of the last aisle
 	var h := {
 		"id": id, "ox": ox, "bit0": bit0, "all": all, "shell": shell, "b": is_b,
-		"racks": [RACKS, RACKS, 20 if is_b else RACKS],
-		"fronts": [], "strips": [[], [], []], "cross": [],
+		"racks": racks, "fronts": [], "strips": strips, "cross": [], "bays": [],
 		"strip_on": glow_mat(WARM if is_b else COOL, 2.2 if is_b else 4.0),
 	}
 	halls[id] = h
-	var z_mid := AISLE_LEN * 0.5
-	var hall_w := HALL_HALF_W * 2.0
+	var x_w := ox - HALL_WEST
+	var x_e := ox + HALL_HALF_W
 
-	# floor: one strip per aisle, lit only by that aisle's lights; the cross corridors see them all
-	for a in 3:
-		var cx := ox + (a - 1) * AISLE_PITCH
-		var x0 := ox - HALL_HALF_W if a == 0 else cx - AISLE_PITCH * 0.5
-		var x1 := ox + HALL_HALF_W if a == 2 else cx + AISLE_PITCH * 0.5
-		floor_piece(r, x0, x1, 0.0, AISLE_LEN, 1 << (bit0 + a), cx)
-	floor_piece(r, ox - HALL_HALF_W, ox + HALL_HALF_W, -END_PAD, 0.0, all)
-	floor_piece(r, ox - HALL_HALF_W, ox + HALL_HALF_W, AISLE_LEN, HALL_Z1, all)
-	box(r, Vector3(ox, CEIL_Y + 0.1, z_mid), Vector3(hall_w + 0.4, 0.2, AISLE_LEN + END_PAD * 2.0 + 0.4), _dark_mat, shell)
+	# floor: a strip per aisle, cut into bays, each lit only by that aisle's lights
+	for a in AISLES:
+		var cx := ox + (a - MID) * AISLE_PITCH
+		var x0 := x_w if a == 0 else cx - AISLE_PITCH * 0.5
+		var x1 := x_e if a == AISLES - 1 else cx + AISLE_PITCH * 0.5
+		floor_piece(r, x0, x1, -END_PAD, 0.0, all)
+		floor_piece(r, x0, x1, AISLE_LEN, HALL_Z1, all)
+	# the roof is a long way up and nothing lights it
+	box(r, Vector3((x_w + x_e) * 0.5, HALL_CEIL + 0.1, AISLE_LEN * 0.5), Vector3(x_e - x_w + 0.4, 0.2, AISLE_LEN + END_PAD * 2.0 + 0.4), _void_mat, shell)
+	# high-bay fittings on standby: pinpricks that show how far the roof goes
+	var dot := QuadMesh.new()
+	dot.size = Vector2(0.5, 0.12)
+	dot.material = glow_mat(Color(0.2, 0.17, 0.12) if is_b else Color(0.14, 0.17, 0.22), 0.35)
+	var dots: Array[Transform3D] = []
+	var down := Basis(Vector3.RIGHT, PI * 0.5)
+	for a in AISLES + 1:
+		var z := 3.0
+		while z < AISLE_LEN:
+			dots.append(Transform3D(down, Vector3(ox + (a - MID - 0.5) * AISLE_PITCH, HALL_CEIL - 0.06, z)))
+			z += 12.4
+	var dm := MultiMesh.new()
+	dm.transform_format = MultiMesh.TRANSFORM_3D
+	dm.mesh = dot
+	dm.instance_count = dots.size()
+	for i in dots.size():
+		dm.set_instance_transform(i, dots[i])
+	var dmi := MultiMeshInstance3D.new()
+	dmi.multimesh = dm
+	dmi.layers = shell
+	r.extra.add_child(dmi)
 
 	# the emergency exit at the far end, and the green sign over it
 	box(r, Vector3(ox, 1.05, HALL_Z1 - 0.02), Vector3(1.0, 2.1, 0.06), mat(Color(0.09, 0.095, 0.105), 0.5, 0.6), shell)
@@ -611,7 +687,7 @@ func _build_hall(id: String, ox: float, bit0: int, is_b: bool) -> void:
 	var sl := omni(r, Vector3(ox, 2.4, HALL_Z1 - 0.4), Color(0.1, 1.0, 0.3), 0.5, 5.0, shell | all)
 	props["exit_light_" + id] = sl
 
-	for a in 3:
+	for a in AISLES:
 		_build_aisle(r, h, a)
 	if is_b:
 		_build_cage(r, h)
@@ -623,16 +699,20 @@ func _build_hall(id: String, ox: float, bit0: int, is_b: bool) -> void:
 		usable("hatch_b", Vector3(hx, 0.15, AISLE_LEN + 1.3), Vector3(0.7, 0.3, 0.7))
 		spots["hall_b_hatch"] = [Vector3(hx, 0.02, AISLE_LEN + 0.4), 0.0]
 		_rack_usable("rack_b07", ox, -1.0, 6)
+		# the rack the ticket is about shows an amber fault light, like any other fault
+		props["b07_led"] = prop(r, Vector3(ox - FRONT_X + 0.02, 1.25, 6.5 * RACK_W), Vector3(0.02, 0.05, 0.05), glow_mat(AMBER, 5.0), all)
+		props["b07_light"] = omni(r, Vector3(ox - FRONT_X + 0.3, 1.25, 6.5 * RACK_W), AMBER, 0.6, 2.4, all)
 	else:
 		prop(r, Vector3(2.0, 1.4, HALL_Z1 - 0.06), Vector3(0.5, 0.6, 0.08), glow_mat(Color(0.8, 0.1, 0.06), 1.0), all)
 		sign_text(r, "FP-A", Vector3(2.0, 1.85, HALL_Z1 - 0.07), Basis(Vector3.UP, PI), 0.0013)
 		usable("fire_panel_a", Vector3(2.0, 1.4, HALL_Z1 - 0.2), Vector3(0.7, 0.8, 0.3))
+		props["fp_light"] = omni(r, Vector3(2.0, 1.5, HALL_Z1 - 0.5), Color(1.0, 0.15, 0.08), 0.7, 4.5, all | shell)
 		prop(r, Vector3(0.0, 1.3, -END_PAD + 0.06), Vector3(0.24, 0.3, 0.08), glow_mat(Color(0.9, 0.7, 0.05), 1.4), all)
 		sign_text(r, "GAS ABORT", Vector3(0.0, 1.62, -END_PAD + 0.07), Basis(), 0.0011)
 		usable("abort_a", Vector3(0.0, 1.3, -END_PAD + 0.15), Vector3(0.5, 0.6, 0.3))
 		_rack_usable("rack_a147", 0.0, -1.0, 7)
-		props["fault_led"] = prop(r, Vector3(-FRONT_X + 0.02, 1.25, 7.5 * RACK_W), Vector3(0.02, 0.05, 0.05), glow_mat(AMBER, 5.0), 2)
-		var fl := omni(r, Vector3(-FRONT_X + 0.3, 1.25, 7.5 * RACK_W), AMBER, 0.5, 2.2, 2)
+		props["fault_led"] = prop(r, Vector3(-FRONT_X + 0.02, 1.25, 7.5 * RACK_W), Vector3(0.02, 0.05, 0.05), glow_mat(AMBER, 5.0), all)
+		var fl := omni(r, Vector3(-FRONT_X + 0.3, 1.25, 7.5 * RACK_W), AMBER, 0.5, 2.2, all)
 		props["fault_light"] = fl
 
 
@@ -640,25 +720,39 @@ func _rack_usable(id: String, cx: float, side: float, i: int) -> void:
 	usable(id, Vector3(cx + side * (FRONT_X - 0.05), 1.1, (i + 0.5) * RACK_W), Vector3(0.24, 1.7, RACK_W))
 
 
+## The letter of the row on the west (-1) or east (+1) side of aisle `a`. O is skipped.
+func row_letter(a: int, side: float) -> String:
+	var n := a * 2 + (0 if side < 0.0 else 1)
+	return "ABCDEFGHIJKLMN"[n]
+
+
+func _mm(r: Room, mesh: Mesh, ts: Array[Transform3D], layers: int) -> void:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = ts.size()
+	for i in ts.size():
+		mm.set_instance_transform(i, ts[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.layers = layers
+	(_into_v if _into_v else r.visual).add_child(mmi)
+
+
 ## One cold aisle: two facing rows of racks, the fibre overhead, and its strip lights.
 func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 	var is_b: bool = h["b"]
 	var ox: float = h["ox"]
-	var cx := ox + (a - 1) * AISLE_PITCH
-	var layers := 1 << (int(h["bit0"]) + a)
+	var cx := ox + (a - MID) * AISLE_PITCH
+	var layers := 1 << (int(h["bit0"]) + a % 3)
 	var count: int = h["racks"][a]
 	var length := count * RACK_W
 	var z_mid := length * 0.5
-	var row_letter := char(65 + a * 2)   # rows A/B, C/D, E/F
+	var story_aisle := absi(a - MID) <= 1
 
 	var body_mesh := BoxMesh.new()
 	body_mesh.size = Vector3(RACK_D, RACK_H, RACK_W - 0.012)
 	body_mesh.material = mat(Color(0.06, 0.06, 0.065), 0.55, 0.3)
-	var bodies := MultiMesh.new()
-	bodies.transform_format = MultiMesh.TRANSFORM_3D
-	bodies.mesh = body_mesh
-	bodies.instance_count = count * 2
-
 	# rack fronts: one quad each, every LED drawn by the shader
 	var front_mat := ShaderMaterial.new()
 	front_mat.shader = _front_shader
@@ -668,60 +762,91 @@ func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 	var front_mesh := QuadMesh.new()
 	front_mesh.size = Vector2(RACK_W, RACK_H)
 	front_mesh.material = front_mat
-	var fronts := MultiMesh.new()
-	fronts.transform_format = MultiMesh.TRANSFORM_3D
-	fronts.mesh = front_mesh
-	fronts.instance_count = count * 2
-
 	# a spool of fibre slack above every rack: yellow in Hall A, teal in Hall B
 	var cable := mat(Color(0.05, 0.5, 0.45) if is_b else Color(0.85, 0.58, 0.04), 0.5)
 	var torus := TorusMesh.new()
 	torus.inner_radius = 0.154
 	torus.outer_radius = 0.226
-	torus.rings = 16
-	torus.ring_segments = 6
+	torus.rings = 12
+	torus.ring_segments = 5
 	torus.material = cable
-	var spools := MultiMesh.new()
-	spools.transform_format = MultiMesh.TRANSFORM_3D
-	spools.mesh = torus
-	spools.instance_count = count * 2
 	var upright := Basis(Vector3.FORWARD, PI * 0.5)
+	var tray := mat(Color(0.1, 0.1, 0.11), 0.5, 0.5)
 
-	var n := 0
-	for side: float in [-1.0, 1.0]:
-		var letter := row_letter if side < 0 else char(row_letter.unicode_at(0) + 1)
-		for i in count:
-			var z := (i + 0.5) * RACK_W
-			bodies.set_instance_transform(n, Transform3D(Basis(), Vector3(cx + side * ROW_X, RACK_H * 0.5, z)))
+	var x_w := ox - HALL_WEST if a == 0 else cx - AISLE_PITCH * 0.5
+	var x_e := ox + HALL_HALF_W if a == AISLES - 1 else cx + AISLE_PITCH * 0.5
+	var bays: Array = []
+	h["bays"].append(bays)
+	var i0 := 0
+	while i0 < RACKS:
+		var i1 := mini(count, i0 + BAY)
+		var bz0 := i0 * RACK_W
+		var bay := {"v": Node3D.new(), "e": Node3D.new(), "m": null, "z0": bz0}
+		r.visual.add_child(bay["v"])
+		r.extra.add_child(bay["e"])
+		bays.append(bay)
+		_into_v = bay["v"]
+		_into_e = bay["e"]
+		floor_piece(r, x_w, x_e, bz0, bz0 + BAY * RACK_W, layers, cx)
+		if i1 <= i0:
+			i0 += BAY
+			continue   # floor only: this is where Cage 7 stands
+		var blen := (i1 - i0) * RACK_W
+		var bmid := bz0 + blen * 0.5
+		var bodies: Array[Transform3D] = []
+		var fronts: Array[Transform3D] = []
+		var spools: Array[Transform3D] = []
+		for side: float in [-1.0, 1.0]:
 			var facing := Basis(Vector3.UP, -side * PI * 0.5)   # quad normal points into the aisle
-			fronts.set_instance_transform(n, Transform3D(facing, Vector3(cx + side * (FRONT_X - 0.004), RACK_H * 0.5, z)))
-			spools.set_instance_transform(n, Transform3D(upright, Vector3(cx + side * 1.305, 2.62, z)))
-			n += 1
-			if i % 4 == 2 or (not is_b and i == 7):
-				var text := ("HALL B · ROW %s · %02d" % [letter, i + 1]) if is_b else ("HALL A · ROW %s · %d" % [letter, 140 + i])
-				_rack_label(r, cx, side, z, text, layers)
-		box(r, Vector3(cx + side * 2.05, 2.72, z_mid), Vector3(1.4, 1.14, length), _dark_mat, layers)
+			for i in range(i0, i1):
+				var z := (i + 0.5) * RACK_W
+				bodies.append(Transform3D(Basis(), Vector3(cx + side * ROW_X, RACK_H * 0.5, z)))
+				fronts.append(Transform3D(facing, Vector3(cx + side * (FRONT_X - 0.004), RACK_H * 0.5, z)))
+				spools.append(Transform3D(upright, Vector3(cx + side * 1.305, 2.62, z)))
+				if (story_aisle and i % 4 == 2) or (not story_aisle and i % 10 == 2) or (story_aisle and not is_b and i == 7):
+					var letter := row_letter(a, side)
+					var text := ("HALL B · ROW %s · %02d" % [letter, i + 1]) if is_b else ("HALL A · ROW %s · %d" % [letter, 140 + i])
+					_rack_label(r, cx, side, z, text, layers)
+			box(r, Vector3(cx + side * 2.05, 2.72, bmid), Vector3(1.4, 1.14, blen), _dark_mat, layers)
+		_mm(r, body_mesh, bodies, layers)
+		_mm(r, front_mesh, fronts, layers)
+		_mm(r, torus, spools, layers)
+		# cable tray down the middle, two runs of fibre on top of it
+		box(r, Vector3(cx, 2.86, bmid), Vector3(0.6, 0.04, blen), tray, layers)
+		for side: float in [-1.0, 1.0]:
+			box(r, Vector3(cx + side * 0.13, 2.925, bmid), Vector3(0.09, 0.09, blen), cable, layers)
+		i0 += BAY
+	_into_v = null
+	_into_e = null
+	for side: float in [-1.0, 1.0]:
 		solid(Vector3(cx + side * ROW_X, RACK_H * 0.5, z_mid), Vector3(RACK_D, RACK_H, length))
 
-	for mm: MultiMesh in [bodies, fronts, spools]:
-		var mmi := MultiMeshInstance3D.new()
-		mmi.multimesh = mm
-		mmi.layers = layers
-		r.visual.add_child(mmi)
-
-	# cable tray down the middle, two runs of fibre on top of it
-	box(r, Vector3(cx, 2.86, z_mid), Vector3(0.6, 0.04, length), mat(Color(0.1, 0.1, 0.11), 0.5, 0.5), layers)
-	for side: float in [-1.0, 1.0]:
-		box(r, Vector3(cx + side * 0.13, 2.925, z_mid), Vector3(0.09, 0.09, length), cable, layers)
-
-	# a dimmer fitting in each cross corridor, at the mouth of the aisle
+	# a dimmer fitting in each cross corridor, at the mouth of the aisle, and the row
+	# letters hung over it where they can be read from the far side of the hall
 	for z: float in [-END_PAD * 0.5, AISLE_LEN + END_PAD * 0.5]:
-		if is_b and a == 2 and z > 0.0:
+		if is_b and a == AISLES - 1 and z > 0.0:
 			continue   # Cage 7 stands here
 		var cl := omni(r, Vector3(cx, 2.9, z), TEAL if is_b else COOL, 0.7 if is_b else 1.6, 6.0, layers | int(h["shell"]))
 		h["cross"].append(cl)
+		var north := z < 0.0
+		var sz := -0.1 if north else length + 0.1
+		var out := -1.0 if north else 1.0
+		var colour := Color(1.0, 0.75, 0.4) if is_b else Color(0.8, 0.88, 1.0)
+		# a header over the mouth of the aisle, read from in front
+		var words := "%s        %s" % [row_letter(a, 1.0), row_letter(a, -1.0)] if north else "%s        %s" % [row_letter(a, -1.0), row_letter(a, 1.0)]
+		var sign := sign_text(r, words, Vector3(cx, 2.5, sz + out * 0.02), Basis(Vector3.UP, PI) if north else Basis(), 0.0058, colour)
+		sign.layers = int(h["shell"])
+		box(r, Vector3(cx, 2.5, sz), Vector3(2.2, 0.42, 0.03), _void_mat, int(h["shell"]))
+		# and a blade on the end of each row, read from along the cross corridor
+		for side: float in [-1.0, 1.0]:
+			var bx := cx + side * ROW_X
+			var bz := sz + out * 0.42
+			box(r, Vector3(bx, 2.42, bz), Vector3(0.03, 0.5, 0.6), _void_mat, int(h["shell"]))
+			for face: float in [-1.0, 1.0]:
+				var blade := sign_text(r, row_letter(a, side), Vector3(bx + face * 0.02, 2.42, bz), Basis(Vector3.UP, face * PI * 0.5), 0.0075, colour)
+				blade.layers = int(h["shell"])
 
-	# strip lights
+	# strip lights. Only the ones near the eye cast real light: see light_strips().
 	var haze_mat := ShaderMaterial.new()
 	haze_mat.shader = _haze_shader
 	if is_b:
@@ -729,19 +854,73 @@ func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 		haze_mat.set_shader_parameter("strength", 0.025)
 	var strips := int(floor(length / STRIP_GAP)) + 1
 	var z0 := (length - (strips - 1) * STRIP_GAP) * 0.5
+	var quad := QuadMesh.new()
+	quad.size = Vector2(2.6, 3.2)
 	for i in strips:
 		var z := z0 + i * STRIP_GAP
+		var sb: Dictionary = bays[clampi(int(z / (BAY * RACK_W)), 0, bays.size() - 1)]
+		_into_v = sb["v"]
+		_into_e = sb["e"]
 		var mesh := box(r, Vector3(cx, 3.23, z), Vector3(1.6, 0.06, 0.14), h["strip_on"], layers)
 		var light := omni(r, Vector3(cx, 3.0, z), WARM if is_b else COOL, 1.3 if is_b else 3.4, 7.5, layers)
+		light.visible = false
 		var haze := MeshInstance3D.new()
-		var quad := QuadMesh.new()
-		quad.size = Vector2(2.6, 3.2)
 		haze.mesh = quad
 		haze.material_override = haze_mat
 		haze.position = Vector3(cx, 1.62, z)
 		haze.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		r.extra.add_child(haze)
-		h["strips"][a].append({"light": light, "mesh": mesh, "haze": haze, "z": z, "on": true})
+		(_into_e if _into_e else r.extra).add_child(haze)
+		h["strips"][a].append({"light": light, "mesh": mesh, "haze": haze, "z": z, "on": true, "full": 1.3 if is_b else 3.4})
+	_into_v = null
+	_into_e = null
+
+
+## A hall has hundreds of strip lights and thousands of racks, and the renderer can
+## afford a few dozen and a few hundred. So: rows that cannot be seen from where the eye
+## is are not drawn (from inside an aisle, that is every other aisle), and real light is
+## cast only by the strips near the eye, faded with distance so that none of them pops.
+## `whole_mid` keeps the door-to-door aisles drawn for the security cameras.
+func light_strips(eye: Vector3, delta: float, whole_mid := false) -> void:
+	_lights_t -= delta
+	if _lights_t > 0.0:
+		return
+	_lights_t = 0.1
+	var bay_len := BAY * RACK_W
+	for id: String in halls:
+		var h: Dictionary = halls[id]
+		var r: Room = rooms["hall_" + id]
+		if not r.visual.visible:
+			continue
+		var inside := r.rect.has_point(Vector2(eye.x, eye.z))
+		var above := eye.y > 3.4
+		var at_end := eye.z < 1.5 or eye.z > AISLE_LEN - 1.5
+		var deep := inside and eye.z > 2.2 and eye.z < AISLE_LEN - 2.2 and not above
+		var near_bay := 0 if eye.z < AISLE_LEN * 0.5 else int(ceil(float(RACKS) / BAY)) - 1
+		for a in AISLES:
+			var dx := absf(eye.x - aisle_x(id, a))
+			var bays: Array = h["bays"][a]
+			for b in bays.size():
+				var see := above or dx < 2.75 or (whole_mid and a == MID)
+				if not see and not deep:
+					see = b == near_bay   # from a cross corridor only the mouth of each aisle shows
+				var bay: Dictionary = bays[b]
+				if (bay["v"] as Node3D).visible != see:
+					bay["v"].visible = see
+					bay["e"].visible = see
+					if bay["m"]:
+						bay["m"].visible = see
+			for s: Dictionary in h["strips"][a]:
+				var k := 0.0
+				if s["on"]:
+					var dz := absf(eye.z - float(s["z"]))
+					if dx < 2.8:
+						k = clampf((36.0 - dz) / 6.0, 0.0, 1.0)
+					k = maxf(k, clampf((16.0 - sqrt(dx * dx + dz * dz)) / 4.0, 0.0, 1.0))
+					if at_end or above:
+						k = maxf(k, clampf((9.5 - dz) / 2.0, 0.0, 1.0) * clampf((30.0 - dx) / 6.0, 0.0, 1.0))
+				var l: OmniLight3D = s["light"]
+				l.visible = k > 0.01
+				l.light_energy = float(s["full"]) * k
 
 
 func set_strip(hall: String, a: int, i: int, on: bool) -> void:
@@ -750,14 +929,16 @@ func set_strip(hall: String, a: int, i: int, on: bool) -> void:
 	if s["on"] == on:
 		return
 	s["on"] = on
-	s["light"].visible = on
+	if not on:
+		s["light"].visible = false
 	s["haze"].visible = on
+	_lights_t = 0.0
 	_swap(rooms["hall_" + hall], s["mesh"], h["strip_on"] if on else _lamp_off)
 
 
 func set_hall_lit(hall: String, on: bool) -> void:
 	var h: Dictionary = halls[hall]
-	for a in 3:
+	for a in AISLES:
 		for i in h["strips"][a].size():
 			set_strip(hall, a, i, on)
 	for l: OmniLight3D in h["cross"]:
@@ -787,7 +968,7 @@ func _rack_label(r: Room, cx: float, side: float, z: float, text: String, layers
 	sticker.material_override = mat(Color(0.62, 0.62, 0.58), 0.9)
 	sticker.layers = layers
 	sticker.transform = Transform3D(facing, Vector3(cx + side * (FRONT_X - 0.008), 2.085, z))
-	r.extra.add_child(sticker)
+	(_into_e if _into_e else r.extra).add_child(sticker)
 	var label := Label3D.new()
 	label.text = text
 	label.font = _font
@@ -798,7 +979,7 @@ func _rack_label(r: Room, cx: float, side: float, z: float, text: String, layers
 	label.shaded = true
 	label.layers = layers
 	label.transform = Transform3D(facing, Vector3(cx + side * (FRONT_X - 0.011), 2.085, z))
-	r.extra.add_child(label)
+	(_into_e if _into_e else r.extra).add_child(label)
 
 
 ## Cage 7: a wire cage in the far corner of Hall B, with no door on the hall side.
@@ -806,10 +987,10 @@ func _build_cage(r: Room, h: Dictionary) -> void:
 	var ox: float = h["ox"]
 	var x0 := ox + 3.2
 	var x1 := ox + HALL_HALF_W
-	var z0 := 13.2
+	var z0 := CAGE_Z0
 	var z1 := HALL_Z1
 	var gx := ox + AISLE_PITCH
-	var layers := (1 << (int(h["bit0"]) + 2)) | int(h["shell"])
+	var layers := (1 << (int(h["bit0"]) + (AISLES - 1) % 3)) | int(h["shell"])
 	var wire := ShaderMaterial.new()
 	wire.shader = load("res://shaders/cage_mesh.gdshader")
 	var post := mat(Color(0.09, 0.09, 0.1), 0.5, 0.6)
@@ -847,20 +1028,20 @@ func _build_cage(r: Room, h: Dictionary) -> void:
 	fronts.instance_count = 8
 	var facing := Basis(Vector3.UP, -PI * 0.5)
 	for i in 8:
-		fronts.set_instance_transform(i, Transform3D(facing, Vector3(x1 - RACK_D - 0.004, RACK_H * 0.5, 15.0 + i * RACK_W)))
+		fronts.set_instance_transform(i, Transform3D(facing, Vector3(x1 - RACK_D - 0.004, RACK_H * 0.5, z0 + 1.8 + i * RACK_W)))
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = fronts
 	mmi.layers = layers
 	r.visual.add_child(mmi)
-	block(r, Vector3(x1 - RACK_D * 0.5, RACK_H * 0.5, 15.0 + 3.5 * RACK_W), Vector3(RACK_D, RACK_H, 8 * RACK_W), mat(Color(0.06, 0.06, 0.065), 0.55, 0.3), layers)
+	block(r, Vector3(x1 - RACK_D * 0.5, RACK_H * 0.5, z0 + 1.8 + 3.5 * RACK_W), Vector3(RACK_D, RACK_H, 8 * RACK_W), mat(Color(0.06, 0.06, 0.065), 0.55, 0.3), layers)
 	# the console, and the chair in front of it
-	var cz := 17.2
+	var cz := CONSOLE_Z
 	block(r, Vector3(x0 + 1.9, 0.45, cz), Vector3(0.7, 0.9, 1.3), mat(Color(0.1, 0.105, 0.115), 0.5, 0.5), layers)
 	props["console_screen"] = prop(r, Vector3(x0 + 2.1, 1.2, cz), Vector3(0.05, 0.42, 0.62), glow_mat(TEAL * 0.5, 1.6), layers)
 	box(r, Vector3(x0 + 2.9, 0.25, cz), Vector3(0.45, 0.5, 0.45), mat(Color(0.05, 0.05, 0.055), 0.8), layers)
 	box(r, Vector3(x0 + 3.14, 0.75, cz), Vector3(0.06, 0.6, 0.42), mat(Color(0.05, 0.05, 0.055), 0.8), layers)
 	usable("console7", Vector3(x0 + 2.2, 1.0, cz), Vector3(0.6, 1.2, 1.3))
-	props["cage_light"] = omni(r, Vector3(x0 + 3.0, 2.6, 17.5), TEAL, 2.6, 7.5, layers)
+	props["cage_light"] = omni(r, Vector3(x0 + 3.0, 2.6, cz + 0.3), TEAL, 2.6, 7.5, layers)
 	prop(r, Vector3(x0 + 1.2, 0.012, z1 - 1.3), Vector3(0.6, 0.02, 0.6), mat(Color(0.42, 0.34, 0.06), 0.7), layers)
 	usable("hatch_cage", Vector3(x0 + 1.2, 0.15, z1 - 1.3), Vector3(0.7, 0.3, 0.7))
 	spots["cage"] = [Vector3(x0 + 1.2, 0.02, z1 - 2.2), 0.0]
@@ -877,34 +1058,35 @@ func close_cage_gate() -> void:
 
 
 func in_cage(p: Vector3) -> bool:
-	return p.y > -5.0 and p.x > HALL_B_X + 3.2 and p.x < HALL_B_X + HALL_HALF_W and p.z > 13.2
+	return p.y > -5.0 and p.x > HALL_B_X + 3.2 and p.x < HALL_B_X + HALL_HALF_W and p.z > CAGE_Z0
 
 
 # ---------------------------------------------------------------- plant
 
 func _build_chillers() -> void:
 	var r: Room = rooms["chillers"]
+	var dx := CH_DX
 	_plain(r, 0.15)
-	lamp(r, 31.0, 0.5, 3.4, 8.5)
-	lamp(r, 31.0, 6.5, 3.4, 8.5)
+	lamp(r, 31.0 + dx, 0.5, 3.4, 8.5)
+	lamp(r, 31.0 + dx, 6.5, 3.4, 8.5)
 	var steel := mat(Color(0.22, 0.23, 0.25), 0.5, 0.4)
 	var pipe := mat(Color(0.12, 0.24, 0.36), 0.5, 0.3)
 	for i in 3:
 		var z := 0.2 + i * 3.5
-		block(r, Vector3(34.4, 1.2, z), Vector3(2.6, 2.4, 2.8), steel)
-		prop(r, Vector3(33.08, 1.5, z - 0.9), Vector3(0.04, 0.3, 0.4), mat(Color(0.05, 0.05, 0.055), 0.5))
+		block(r, Vector3(34.4 + dx, 1.2, z), Vector3(2.6, 2.4, 2.8), steel)
+		prop(r, Vector3(33.08 + dx, 1.5, z - 0.9), Vector3(0.04, 0.3, 0.4), mat(Color(0.05, 0.05, 0.055), 0.5))
 		var ok := i != 1
-		var lm := prop(r, Vector3(33.06, 1.75, z - 0.9), Vector3(0.02, 0.05, 0.05), glow_mat(Color(0.1, 1.0, 0.35) if ok else AMBER, 3.0))
+		var lm := prop(r, Vector3(33.06 + dx, 1.75, z - 0.9), Vector3(0.02, 0.05, 0.05), glow_mat(Color(0.1, 1.0, 0.35) if ok else AMBER, 3.0))
 		if not ok:
 			props["chiller_led"] = lm
-		sign_text(r, "CH-%d" % (i + 1), Vector3(33.08, 2.1, z), Basis(Vector3.UP, -PI * 0.5), 0.002)
+		sign_text(r, "CH-%d" % (i + 1), Vector3(33.08 + dx, 2.1, z), Basis(Vector3.UP, -PI * 0.5), 0.002)
 	for x: float in [29.0, 29.5]:
-		box(r, Vector3(x, 2.8, 3.7), Vector3(0.22, 0.22, 12.4), pipe)
-	box(r, Vector3(32.0, 2.8, 8.9), Vector3(6.0, 0.22, 0.22), pipe)
-	usable("chiller2", Vector3(33.0, 1.5, 2.8), Vector3(0.4, 0.9, 0.7))
-	props["note1"] = prop(r, Vector3(33.08, 1.3, 4.4), Vector3(0.01, 0.22, 0.16), mat(Color(0.7, 0.68, 0.6), 0.9))
-	usable("note1", Vector3(33.0, 1.3, 4.4), Vector3(0.3, 0.5, 0.4))
-	spots["chillers"] = [Vector3(31.6, 0.02, 3.3), -PI * 0.5]
+		box(r, Vector3(x + dx, 2.8, 3.7), Vector3(0.22, 0.22, 12.4), pipe)
+	box(r, Vector3(32.0 + dx, 2.8, 8.9), Vector3(6.0, 0.22, 0.22), pipe)
+	usable("chiller2", Vector3(33.0 + dx, 1.5, 2.8), Vector3(0.4, 0.9, 0.7))
+	props["note1"] = prop(r, Vector3(33.08 + dx, 1.3, 4.4), Vector3(0.01, 0.22, 0.16), mat(Color(0.7, 0.68, 0.6), 0.9))
+	usable("note1", Vector3(33.0 + dx, 1.3, 4.4), Vector3(0.3, 0.5, 0.4))
+	spots["chillers"] = [Vector3(31.6 + dx, 0.02, 3.3), -PI * 0.5]
 
 
 # ---------------------------------------------------------------- plenum
@@ -1091,6 +1273,10 @@ func _finish_mirrors() -> void:
 	world.add_child(shell_mirror)
 	for i in shared.size():
 		shared[i]["m"] = shell_mirror.get_child(i)
+	for id: String in halls:
+		for bays: Array in halls[id]["bays"]:
+			for bay: Dictionary in bays:
+				bay["m"] = _twin(rooms["hall_" + id], bay["v"])
 
 
 func room_at(p: Vector3) -> String:

@@ -15,8 +15,8 @@ const ACT_CAP := [0.0, 1385.0, 1465.0, 1516.0, 1566.0, 1620.0]
 const ACT_NAME := ["", "HANDOVER", "TICKETS", "OUT OF SYNC", "UNDER THE FLOOR", "CAGE 7"]
 const NOTE_ORDER := ["label", "note1", "note2", "note3"]
 const NOTES := {
-	"label": "[b]ASSET LABEL[/b]  from the failed drive, Hall A C-147\nHALDEN DC-3 · HALL B · ROW G · 07\nHall B has rows A to F.",
-	"note1": "[b]NOTE[/b]  taped inside the CH-2 panel\nIt writes the door log before the doors open. I checked three nights running.\nIt only holds while you go where it says. Use the other door and watch what it does.\nThe tile at the south end of Hall B, west aisle, is loose. I left the lifter here.\nDo not jog in there. It hears the tiles.\n  D. Marsh, nights",
+	"label": "[b]ASSET LABEL[/b]  from the failed drive, Hall A K-147\nHALDEN DC-3 · HALL B · ROW P · 07\nHall B has rows A to N.",
+	"note1": "[b]NOTE[/b]  taped inside the CH-2 panel\nIt writes the door log before the doors open. I checked three nights running.\nIt only holds while you go where it says. Use the other door and watch what it does.\nThe tile at the far end of Hall B, between rows I and J, is loose. I left the lifter here.\nDo not jog in there. It hears the tiles.\n  D. Marsh, nights",
 	"note2": "[b]NOTE[/b]  meet-me room, behind panel 7\nPort 12 is on no patch schedule. Yellow, unlabelled, straight down through the floor.\nClip the fault locator on and it glows the whole way. Open damper P-7 or you will not get past.\nIt ends under a cage that is not on the plan.\n  D. M.",
 	"note3": "[b]BADGE[/b]  on the plenum floor\n0388 · D. MARSH · NIGHTS\nLast entry, three weeks ago: MANTRAP IN. There is no exit entry.\nOn the back, in pen: It does not want you gone. It wants you certain. There is a chair.",
 }
@@ -148,6 +148,75 @@ func _refresh_doors() -> void:
 		if flags.has("epo"):
 			state = "dead"
 		kit.doors[id].set_state(state)
+
+
+func _beacon(on: bool) -> void:
+	(kit.props["b07_led"] as Node3D).visible = on
+	(kit.props["b07_light"] as Node3D).visible = on
+
+
+## What you are meant to be doing, in one line, and where. Shown on screen and marked
+## on the handheld's plan, because the building is too big to search.
+func _goal() -> Array:
+	var u: Dictionary = kit.uses
+	var room: String = game.room
+	match act:
+		1:
+			match step:
+				"badge_in":
+					return ["Badge in through the mantrap", kit.doors["dock_mantrap"].position]
+				"to_security":
+					return ["Security desk: pick up the handheld", u["handheld"].position]
+				"swap":
+					return ["#4471   Hall A · Row K · rack 147", u["rack_a147"].position]
+				"return":
+					return ["#4471   Security desk: the RETURNS bin", u["desk_bin"].position]
+		2:
+			match step:
+				"to_hall_b", "pulse", "console":
+					if flags.has("hot"):
+						return ["#4473   Hall B · Row K · rack 07", u["rack_b07"].position]
+					if not tickets.is_empty() and tickets[-1]["id"] == "4472":
+						return ["#4472   Hall B · Row P · rack 07", null]
+				"ups":
+					return ["#4474   UPS room: breaker B2", u["breaker_b2"].position]
+				"to_desk2":
+					return ["Security desk: the cameras", u["cctv"].position]
+		3:
+			match step:
+				"fire_panel":
+					return ["#4475   Hall A, far end: fire panel FP-A", u["fire_panel_a"].position]
+				"abort":
+					return ["GAS ABORT   Hall A, corridor end, between the doors", u["abort_a"].position]
+				"chiller":
+					if not tickets.is_empty() and tickets[-1]["id"] == "4476":
+						return ["#4476   Chiller plant: restart CH-2", u["chiller2"].position]
+		4:
+			if not notes.has("note1"):
+				return ["The CH-2 panel: something is taped inside", u["note1"].position]
+			if room == "plenum":
+				return ["Follow the lit fibre" if flags.has("fibre") else "Under the floor: find the way up", null]
+			if not flags.has("fibre"):
+				if room == "mmr":
+					return ["Meet-me room: panel 7, port 12", u["panel7"].position]
+				return ["Hall B, far end, rows I and J: the loose tile", u["hatch_b"].position]
+			if not flags.has("damper"):
+				return ["Meet-me room: damper P-7", u["damper"].position]
+			return ["Under the floor: follow the lit fibre", u["hatch_mmr"].position]
+		5:
+			if not flags.has("console7"):
+				return ["Cage 7: the console", u["console7"].position]
+			if not flags.has("epo"):
+				return ["02:31   MANTRAP OUT   is already in the log", null]
+	return ["", null]
+
+
+func objective() -> String:
+	return "" if ended or act == 0 else String(_goal()[0])
+
+
+func goal_pos() -> Variant:
+	return null if ended or act == 0 else _goal()[1]
 
 
 func _teleport(spot: String) -> void:
@@ -297,9 +366,9 @@ func on_use(id: String) -> void:
 			(kit.props["handheld"] as Node3D).visible = false
 			game.sound.play("tone")
 			_handheld_hints()
-			_say_later(16.0, "Housekeeping. Out of the security office, Hall A is the first door on your left. Row C is the middle aisle. You should not need Hall B tonight.")
+			_say_later(16.0, "Housekeeping. Hall A-2 is the door straight across the corridor from the security office. Row K is one aisle to your right once you are inside. The row letters hang over every aisle. You should not need Hall B tonight.")
 			ops("Evening, 0417. Operations desk here, remote as always. You are the only one on site tonight. One ticket in the queue, should be a quiet shift.")
-			ticket("4471", "Failed drive, Hall A", "Hall A · Row C · rack 147, drive bay 3. Swap it for the spare and bring the dead one back to RETURNS at the security desk. Middle aisle, left-hand row. It is showing an amber fault light.")
+			ticket("4471", "Failed drive, Hall A", "Hall A · Row K · rack 147, drive bay 3. Swap it for the spare and bring the dead one back to RETURNS at the security desk. Row K is in the aisle between the two doors, near the corridor end. It is showing an amber fault light.")
 			step = "swap"
 		"rack_a147":
 			_swap_drive()
@@ -506,6 +575,7 @@ func _world_for_act(n: int) -> void:
 	(kit.props["fault_led"] as Node3D).visible = n == 1
 	(kit.props["fault_light"] as Node3D).visible = n == 1
 	(kit.props["breaker_led"] as Node3D).visible = n <= 2
+	_beacon(n == 2 and flags.has("hot") and not flags.has("b_cleared"))
 	(kit.props["handheld"] as Node3D).visible = not have_handheld
 	(kit.props["note1"] as Node3D).visible = not notes.has("note1")
 	(kit.props["note2"] as Node3D).visible = not notes.has("note2")
@@ -545,7 +615,7 @@ func _restore(n: int) -> void:
 	var upto: int = [0, 0, 5, 9, 12, 12][n]
 	for i in upto:
 		_log(_line(past[i][1]), "real" if i < 6 else "true", past[i][0])
-	var old := [["4471", "Failed drive, Hall A"], ["4472", "Link down, Hall B G-07"], ["4473", "High temperature, Hall B"],
+	var old := [["4471", "Failed drive, Hall A"], ["4472", "Link down, Hall B P-07"], ["4473", "High temperature, Hall B"],
 		["4474", "Breaker B2, UPS room"], ["4475", "Fire panel FP-A"], ["4476", "Chiller CH-2 tripped"]]
 	var closed: int = [0, 0, 1, 4, 6, 6][n]
 	for i in closed:
@@ -564,15 +634,16 @@ func _act2() -> void:
 	grant(["hall_b1", "hall_b2"])
 	if not await _wait(3.0):
 		return
-	ticket("4472", "Link down, Hall B G-07", "Hall B · Row G · rack 07: link down on port 47. Reseat the fibre.")
+	ticket("4472", "Link down, Hall B P-07", "Hall B · Row P · rack 07: link down on port 47. Reseat the fibre.")
 	if not await _wait(7.0):
 		return
-	ops("Row G? Hall B stops at row F on my plan. Same row as the label on that dead drive, though. Leave it with me.")
+	ops("Row P? Hall B stops at row N on my plan. Do not go looking for it. Same row as the label on that dead drive, though. Leave it with me.")
 	if not await _wait(9.0):
 		return
 	game.sound.play("chime", -6.0)
 	flags["hot"] = true
-	ticket("4473", "High temperature, Hall B", "HIGH TEMP alarm, Hall B, middle aisle. Plug your console cable into Row C · rack 07 and read what it says.")
+	_beacon(true)
+	ticket("4473", "High temperature, Hall B", "HIGH TEMP alarm, Hall B. Plug your console cable into Row K · rack 07 and read what it says. Row K is in the aisle between the two doors, a few racks in from the corridor end. The rack is showing an amber fault light.")
 
 
 func _act3() -> void:
@@ -624,7 +695,7 @@ func _swap_drive() -> void:
 	(kit.props["fault_light"] as Node3D).visible = false
 	add_note("label")
 	step = "return"
-	game.toast("The new drive spins up. The dead one has an asset label for Hall B, row G. It is in your notes.", 8.0)
+	game.toast("The new drive spins up. The dead one has an asset label for Hall B, row P. It is in your notes.", 8.0)
 	_say_later(13.0, "Marsh had your shift until three weeks ago. Stopped coming in, never handed the badge back. The agency took a while to find you.")
 	if await _wait(6.0):
 		ops("Rebuild has started. Drop the dead drive in RETURNS at the security desk and I will close the ticket.")
@@ -660,16 +731,16 @@ func _pulse_event() -> void:
 	if mine == _gen and step == "pulse":
 		step = "console"
 		you("Every status light in the aisle went out and came back, one rack at a time. It stopped next to me.")
-		_say_later(5.0, "Nothing in my logs. Nothing ran. Plug in at C-07 and read me what the console says.")
+		_say_later(5.0, "Nothing in my logs. Nothing ran. Plug in at K-07 and read me what the console says.")
 
 
 func _console_b() -> void:
-	var title := "CONSOLE · hb-c07 · Hall B row C rack 07"
+	var title := "CONSOLE · hb-k07 · Hall B row K rack 07"
 	if act != 2 or flags.has("b_cleared"):
-		game.terminal.show_screen(title, "hb-c07-con> show status\n  inlet temp     21.3 C\n  fans           6/6\n  alarms         none\n  port 47        hb-g07   up   [CAGE 7]")
+		game.terminal.show_screen(title, "hb-k07-con> show status\n  inlet temp     21.3 C\n  fans           6/6\n  alarms         none\n  port 47        hb-p07   up   [CAGE 7]")
 		return
 	game.sound.play("beep", -6.0)
-	_console_b_menu("hb-c07-con>\n  console cable connected. 9600 8N1.")
+	_console_b_menu("hb-k07-con>\n  console cable connected. 9600 8N1.")
 
 
 func _console_b_menu(text: String) -> void:
@@ -680,15 +751,15 @@ func _console_b_menu(text: String) -> void:
 	]
 	if flags.has("console_b"):
 		choices.append(["clear the temperature alarm", _console_b_clear])
-	game.terminal.show_screen("CONSOLE · hb-c07 · Hall B row C rack 07", text, choices)
+	game.terminal.show_screen("CONSOLE · hb-k07 · Hall B row K rack 07", text, choices)
 
 
 func _console_b_status() -> void:
-	_console_b_menu("hb-c07-con> show status\n  inlet temp     21.4 C     alarm threshold 32.0 C\n  fans           6/6\n  HIGH TEMP raised by    hb-g07\n  hb-g07                 no such rack in inventory")
+	_console_b_menu("hb-k07-con> show status\n  inlet temp     21.4 C     alarm threshold 32.0 C\n  fans           6/6\n  HIGH TEMP raised by    hb-p07\n  hb-p07                 no such rack in inventory")
 
 
 func _console_b_links() -> void:
-	_console_b_menu("hb-c07-con> show link partners\n  port 1    hb-c06     up    211 d\n  port 2    hb-c08     up    211 d\n  port 47   hb-g07     up   1123 d    [CAGE 7]\n  CAGE 7                no such location in inventory")
+	_console_b_menu("hb-k07-con> show link partners\n  port 1    hb-k06     up    211 d\n  port 2    hb-k08     up    211 d\n  port 47   hb-p07     up   1123 d    [CAGE 7]\n  CAGE 7                no such location in inventory")
 
 
 func _console_b_log() -> void:
@@ -698,7 +769,7 @@ func _console_b_log() -> void:
 		predict("hall_b2", 6.0, ["hall_b1"])
 		predict("ups", 4.0)
 		_say_later(9.0, "I have pushed the door log to your handheld. Two of those lines have not happened yet. Tell me that is a clock fault.")
-	var t := "hb-c07-con> show door log badge 0417\n"
+	var t := "hb-k07-con> show door log badge 0417\n"
 	var lines: Array = log.duplicate()
 	lines.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["t"] < b["t"])
 	for e: Dictionary in lines.slice(maxi(0, lines.size() - 8)):
@@ -710,11 +781,12 @@ func _console_b_log() -> void:
 
 func _console_b_clear() -> void:
 	flags["b_cleared"] = true
+	_beacon(false)
 	close_ticket("4473")
 	close_ticket("4472")
 	grant(["ups"])
 	step = "ups"
-	game.terminal.show_screen("CONSOLE · hb-c07 · Hall B row C rack 07", "hb-c07-con> clear alarm\n  HIGH TEMP cleared.\n  note: alarm source hb-g07 is not in inventory. Nothing was hot.")
+	game.terminal.show_screen("CONSOLE · hb-k07 · Hall B row K rack 07", "hb-k07-con> clear alarm\n  HIGH TEMP cleared.\n  note: alarm source hb-p07 is not in inventory. Nothing was hot.")
 	ticket("4474", "Breaker B2, UPS room", "UPS room, panel B: breaker B2 has tripped. Reset it by hand. Your badge has the UPS room for tonight.")
 
 
@@ -788,7 +860,7 @@ func on_cctv_closed() -> void:
 
 func _fire_panel() -> void:
 	step = "abort"
-	countdown = 50.0 - 4.0 * defy
+	countdown = 56.0 - 4.0 * defy
 	kit.set_hall_lit("a", false)
 	game.sound.play("breaker", -4.0)
 	game.sound.alarm(true)
@@ -1017,7 +1089,7 @@ func _process(delta: float) -> void:
 		# the strip lights go out one bay at a time behind you
 		_strip_t -= delta
 		if _strip_t <= 0.0:
-			for a in 3:
+			for a in Kit.AISLES:
 				var strips: Array = kit.halls["a"]["strips"][a]
 				var mine := absf(p.x - kit.aisle_x("a", a)) < 1.4
 				for i in strips.size():
@@ -1044,7 +1116,7 @@ func _process(delta: float) -> void:
 	# the torch does not like Cage 7 equipment
 	var near_cage := 0.0
 	if room == "hall_b" and not flags.has("epo"):
-		var d := Vector2(p.x - (Kit.HALL_B_X + 6.0), p.z - 17.5).length()
+		var d := Vector2(p.x - (Kit.HALL_B_X + 6.0), p.z - (Kit.CONSOLE_Z + 0.3)).length()
 		near_cage = clampf(1.0 - (d - 4.0) / 7.0, 0.0, 1.0)
 	game.player.torch_flicker = near_cage * 0.8
 
@@ -1076,9 +1148,11 @@ var _shot := {}
 func opening_shots() -> Array:
 	var bx := Kit.HALL_B_X
 	return [
-		{"from": Vector3(0, 1.5, 0.6), "to": Vector3(0, 1.5, 6.5), "look": Vector3(0, 1.25, 20), "secs": 7.0,
-			"text": "Halden DC-3. Two data halls, eleven thousand machines and, after ten at night, one person."},
-		{"from": Vector3(bx, 1.6, 17.5), "to": Vector3(bx, 1.6, 12.0), "look": Vector3(bx, 1.2, -2.0), "secs": 7.0,
+		{"from": Vector3(-24.0, 7.2, 1.0), "to": Vector3(-17.0, 6.2, 6.0), "look": Vector3(-2.0, 1.5, 46.0), "secs": 8.0,
+			"text": "Halden DC-3. Two data halls, forty thousand machines and, after ten at night, one person."},
+		{"from": Vector3(0, 1.5, 0.6), "to": Vector3(0, 1.5, 7.5), "look": Vector3(0, 1.25, 40), "secs": 6.0,
+			"text": "It takes a minute to walk one aisle end to end. There are fourteen aisles."},
+		{"from": Vector3(bx, 1.6, 27.5), "to": Vector3(bx, 1.6, 22.0), "look": Vector3(bx, 1.2, -2.0), "secs": 7.0,
 			"text": "For three weeks that person was Marsh. Marsh stopped coming in. Nobody on days can say why."},
 		{"from": Vector3(7.9, 2.0, -6.9), "to": Vector3(6.9, 1.8, -8.3), "look": Vector3(4.6, 1.2, -11.5), "secs": 6.5,
 			"text": "The work is simple. A ticket arrives on the handheld. You walk to where it says."},
@@ -1089,17 +1163,18 @@ func opening_shots() -> Array:
 
 func act_shots(n: Variant) -> Array:
 	var bx := Kit.HALL_B_X
+	var cz := Kit.CONSOLE_Z
 	_shot = {}
 	match int(n):
 		2:
 			return [
-				{"from": Vector3(8.6, 1.6, -5.2), "to": Vector3(11.4, 1.55, -5.0), "look": Vector3(bx + 1.0, 1.25, -2.8), "secs": 7.0,
+				{"from": Vector3(bx - 9.8, 1.6, -5.2), "to": Vector3(bx - 7.0, 1.55, -5.0), "look": Vector3(bx + 1.0, 1.25, -2.8), "secs": 7.0,
 					"text": "23:10. One ticket closed. Along the corridor, two readers that were red all evening turn green.",
 					"start": _shot_readers_red, "tick": _shot_readers},
 			]
 		4:
 			return [
-				{"from": Vector3(30.6, 1.6, -4.3), "to": Vector3(28.8, 1.6, -4.3), "look": Vector3(-9, 1.3, -4.3), "secs": 7.5,
+				{"from": Vector3(Kit.CORR_X1 - 1.4, 1.6, -4.3), "to": Vector3(Kit.CORR_X1 - 3.2, 1.6, -4.3), "look": Vector3(-9, 1.3, -4.3), "secs": 7.5,
 					"text": "01:20. CH-2 restarts. Then, from the far end of the corridor, the lights go out one at a time.",
 					"start": _shot_corridor_on, "tick": _shot_corridor},
 				{"from": Vector3(bx, 1.5, -1.6), "to": Vector3(bx, 1.5, 2.6), "look": Vector3(bx, 1.2, 20), "secs": 6.5,
@@ -1107,9 +1182,9 @@ func act_shots(n: Variant) -> Array:
 			]
 		5:
 			return [
-				{"from": Vector3(bx + 5.44, 1.75, 4.5), "to": Vector3(bx + 5.44, 1.6, 9.8), "look": Vector3(bx + 5.3, 1.1, 17.2), "secs": 7.0,
-					"text": "02:10. Hall B, row G. A cage that is on no plan, running for one thousand one hundred and twenty-three days."},
-				{"from": Vector3(bx + 7.3, 1.6, 19.6), "to": Vector3(bx + 6.9, 1.45, 18.6), "look": Vector3(bx + 5.2, 1.0, 17.2), "secs": 6.0,
+				{"from": Vector3(bx + 5.44, 1.75, cz - 12.7), "to": Vector3(bx + 5.44, 1.6, cz - 7.4), "look": Vector3(bx + 5.3, 1.1, cz), "secs": 7.0,
+					"text": "02:10. Hall B, row P. A cage that is on no plan, running for one thousand one hundred and twenty-three days."},
+				{"from": Vector3(bx + 7.3, 1.6, cz + 2.4), "to": Vector3(bx + 6.9, 1.45, cz + 1.4), "look": Vector3(bx + 5.2, 1.0, cz), "secs": 6.0,
 					"text": "One console. One chair. Somebody has been sitting in it."},
 			]
 	return []
@@ -1117,11 +1192,12 @@ func act_shots(n: Variant) -> Array:
 
 func ending_shots(kind: String) -> Array:
 	var bx := Kit.HALL_B_X
+	var cz := Kit.CONSOLE_Z
 	_shot = {}
 	match kind:
 		"comply":
 			return [
-				{"from": Vector3(0, 1.5, 8.0), "to": Vector3(0, 1.5, 3.0), "look": Vector3(0, 1.25, 20), "secs": 7.0,
+				{"from": Vector3(0, 1.5, 8.0), "to": Vector3(0, 1.5, 3.0), "look": Vector3(0, 1.25, 40), "secs": 7.0,
 					"text": "02:31. As the mantrap closes behind you, every light in Halden DC-3 comes back on.", "start": _shot_relight},
 				{"from": Vector3(5.0, 1.8, -9.9), "to": Vector3(5.0, 1.75, -8.4), "look": Vector3(5.0, 1.8, -11.9), "secs": 6.5,
 					"text": "The cameras come back too. They show a technician leaving, exactly on time."},
@@ -1135,7 +1211,7 @@ func ending_shots(kind: String) -> Array:
 			]
 		"stay":
 			return [
-				{"from": Vector3(bx + 7.6, 1.75, 19.4), "to": Vector3(bx + 6.7, 1.4, 18.2), "look": Vector3(bx + 5.2, 1.0, 17.2), "secs": 7.0,
+				{"from": Vector3(bx + 7.6, 1.75, cz + 2.2), "to": Vector3(bx + 6.7, 1.4, cz + 1.0), "look": Vector3(bx + 5.2, 1.0, cz), "secs": 7.0,
 					"text": "You sit. The chair is still warm."},
 				{"from": Vector3(bx, 3.0, -2.2), "to": Vector3(bx, 3.0, -1.6), "look": Vector3(bx, 0.4, 11.0), "secs": 6.5,
 					"text": "The log scrolls under your hands. You change one line, then another."},
@@ -1169,9 +1245,11 @@ func _shot_corridor_on() -> void:
 
 
 func _shot_corridor(k: float) -> void:
+	# the corridor is long; only the last eight fittings are near enough to watch
+	var n: int = kit.rooms["corridor"].lamps.size()
 	var out := clampi(int(k * 10.5), 0, 8)
-	for i in 8:
-		kit.set_lamp("corridor", i, i >= out)
+	for i in n:
+		kit.set_lamp("corridor", i, i >= n - 8 + out)
 	if out != int(_shot.get("out", 0)):
 		_shot["out"] = out
 		game.sound.play("tick", -3.0, randf_range(0.75, 0.9))
@@ -1280,16 +1358,16 @@ func autotest(ending: String, walk := false) -> void:
 	await badge.call("hall_a2" if defiant else "hall_a1")
 	pl.global_position = Vector3(0, 0.02, 12.0)
 	await get_tree().create_timer(3.0).timeout
-	await use.call("fire_panel_a", Vector3(2, 0.02, 21.0))
+	await use.call("fire_panel_a", Vector3(2, 0.02, Kit.HALL_Z1 - 1.44))
 	want.call("abort")
 	await use.call("abort_a", Vector3(0, 0.02, -1.5))
 	want.call("chiller")
 	await badge.call("hall_a2")
 	await badge.call("chillers")
-	await use.call("chiller2", Vector3(31.8, 0.02, 2.8))
+	await use.call("chiller2", Vector3(31.8 + Kit.CH_DX, 0.02, 2.8))
 	await get_tree().create_timer(4.0).timeout
 	_check(act == 4, "act 4 did not start")
-	await use.call("note1", Vector3(31.8, 0.02, 4.4))
+	await use.call("note1", Vector3(31.8 + Kit.CH_DX, 0.02, 4.4))
 	await get_tree().create_timer(5.0).timeout
 	await badge.call("hall_b2")
 	await use.call("hatch_b", Vector3(Kit.HALL_B_X - Kit.AISLE_PITCH, 0.02, Kit.AISLE_LEN + 0.5))
