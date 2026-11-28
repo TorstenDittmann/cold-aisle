@@ -81,6 +81,7 @@ func build(g: Node, mono: Font, mono_light: Font) -> void:
 
 func toggle() -> void:
 	raised = not raised
+	game.sound.play("cloth%d" % (randi() % 2), -14.0, 1.1)
 	if raised:
 		foot.visible = not game.touch.active
 		# open on whatever is new
@@ -109,14 +110,24 @@ func _process(delta: float) -> void:
 	_rise = move_toward(_rise, 1.0 if raised else 0.0, delta * 5.0)
 	visible = _rise > 0.0
 	if not visible:
+		game.hands.hold_device(0.0, 0.0)
 		return
 	var ease_v := 1.0 - pow(1.0 - _rise, 3.0)
-	var k := minf(1.0, (size.y - 16.0) / (H + 24.0))
+	# The device is a real object in the player's hand; this panel is its screen, laid
+	# exactly over it at full resolution so the text stays sharp. On a touch screen the
+	# round buttons keep the right-hand edge.
+	var edge := 150.0 if game.touch.active else 84.0
+	game.hands.hold_device(ease_v, edge / maxf(size.x, 1.0))
+	var cam: Camera3D = game.player.camera
+	var top: Array[Vector3] = game.hands.screen_top()
+	var f := size / Vector2(game.view.size)
+	var tl := cam.unproject_position(top[0]) * f
+	var tr := cam.unproject_position(top[1]) * f
+	var k := tl.distance_to(tr) / W
 	_panel.scale = Vector2(k, k)
-	# on a touch screen the round buttons keep the right-hand edge
-	var edge := 136.0 if game.touch.active else 36.0
-	_panel.position = Vector2(size.x - W * k - edge, size.y - (H + 24.0) * k * ease_v + 30.0 * (1.0 - ease_v))
-	_panel.rotation = (1.0 - ease_v) * 0.12 - 0.012
+	_panel.rotation = (tr - tl).angle()
+	_panel.position = tl
+	_panel.modulate.a = clampf(ease_v * 4.0 - 2.4, 0.0, 1.0)
 	_head.text = "%s   %s" % [game.clock_text(), PAGES[page]]
 	if page == 1:
 		_plan.queue_redraw()
