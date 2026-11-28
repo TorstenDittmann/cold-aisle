@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#030405">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>$GODOT_PROJECT_NAME</title>
+<style>
+html, body, #canvas { margin: 0; padding: 0; border: 0; }
+html, body { height: 100%; }
+body { color: #edf1f5; background: #030405; overflow: hidden; touch-action: none;
+	font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	-webkit-user-select: none; user-select: none; }
+#canvas { display: block; }
+#canvas:focus { outline: none; }
+#load { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center;
+	padding: 0 8vw; background: #030405; transition: opacity .6s; }
+#load h1 { font-size: clamp(34px, 7vw, 64px); font-weight: 500; letter-spacing: .04em; margin: 0 0 .3em; }
+#load .sub { color: #8b939d; font-size: 13px; letter-spacing: .12em; margin-bottom: 3.2em; }
+#bar { width: min(420px, 84vw); height: 2px; background: #1b1f24; }
+#fill { height: 100%; width: 0; background: #ffb347; transition: width .2s; }
+#state { color: #ffb347; font-size: 13px; margin-top: 1.1em; letter-spacing: .08em; min-height: 3em; white-space: pre-line; }
+#log { color: #4f565f; font-size: 12px; margin-top: 2.4em; line-height: 1.7; white-space: pre; }
+#load.fail #fill { background: #ff4433; }
+#load.fail #state { color: #ff8877; }
+</style>
+$GODOT_HEAD_INCLUDE
+</head>
+<body>
+<canvas id="canvas">Your browser does not support the canvas tag.</canvas>
+<noscript>Cold Aisle needs JavaScript.</noscript>
+<div id="load">
+	<h1>COLD AISLE</h1>
+	<div class="sub">HALDEN DC-3 &nbsp;·&nbsp; NIGHT SHIFT</div>
+	<div id="bar"><div id="fill"></div></div>
+	<div id="state">BADGING IN</div>
+	<div id="log"></div>
+</div>
+<script src="$GODOT_URL"></script>
+<script>
+const GODOT_CONFIG = $GODOT_CONFIG;
+const GODOT_THREADS_ENABLED = $GODOT_THREADS_ENABLED;
+const engine = new Engine(GODOT_CONFIG);
+(function () {
+	const load = document.getElementById('load');
+	const fill = document.getElementById('fill');
+	const state = document.getElementById('state');
+	const log = document.getElementById('log');
+	const lines = ['21:58  STAFF GATE      GRANTED'];
+	const steps = [[0.25, '21:59  CAR PARK B      GRANTED'], [0.55, '22:00  LOADING DOCK    GRANTED'], [0.9, '22:00  MANTRAP         ......']];
+	function show(p) {
+		fill.style.width = Math.round(p * 100) + '%';
+		while (steps.length && p >= steps[0][0]) { lines.push(steps.shift()[1]); }
+		log.textContent = lines.join('\n');
+	}
+	function fail(err) {
+		console.error(err);
+		load.classList.add('fail');
+		state.textContent = 'COULD NOT START\n' + (err && err.message ? err.message : String(err));
+	}
+	// The game calls this once its own shaders are ready and the title is on screen.
+	window.coldAisleReady = function () {
+		load.style.opacity = '0';
+		setTimeout(function () { load.remove(); }, 700);
+	};
+	window.coldAisleProgress = function (p, text) {
+		show(0.8 + 0.2 * p);
+		state.textContent = text;
+	};
+	// On a phone, the first touch takes the whole screen and turns it sideways.
+	// This has to run inside the touch handler itself or the browser refuses.
+	function goFullscreen() {
+		const el = document.documentElement;
+		const active = document.fullscreenElement || document.webkitFullscreenElement;
+		const request = el.requestFullscreen || el.webkitRequestFullscreen;
+		if (active || !request) { return; }
+		try {
+			const done = request.call(el, { navigationUI: 'hide' });
+			const lock = function () {
+				if (screen.orientation && screen.orientation.lock) { screen.orientation.lock('landscape').catch(function () {}); }
+			};
+			if (done && done.then) { done.then(lock).catch(function () {}); } else { lock(); }
+		} catch (e) { /* not allowed here; play in the page */ }
+	}
+	document.addEventListener('touchend', goFullscreen, { passive: true });
+	show(0);
+	const missing = Engine.getMissingFeatures({ threads: GODOT_THREADS_ENABLED });
+	if (missing.length !== 0) {
+		fail(new Error('This browser is missing: ' + missing.join(', ')));
+		return;
+	}
+	engine.startGame({
+		'onProgress': function (current, total) {
+			if (current > 0 && total > 0) {
+				show(0.8 * current / total);
+				state.textContent = 'DOWNLOADING  ' + (current / 1048576).toFixed(1) + ' / ' + (total / 1048576).toFixed(1) + ' MB';
+			} else {
+				state.textContent = 'DOWNLOADING';
+			}
+		},
+	}).then(function () {
+		state.textContent = 'STARTING THE BUILDING';
+		// if the game never reports in, do not leave the page covered
+		setTimeout(function () { if (document.getElementById('load')) { window.coldAisleReady(); } }, 60000);
+	}, fail);
+}());
+</script>
+</body>
+</html>

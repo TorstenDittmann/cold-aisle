@@ -113,8 +113,11 @@ func set_tag(feed: int, text: String) -> void:
 func _process(delta: float) -> void:
 	if not is_open:
 		return
-	_grid.position = (size - Vector2(1184, 632)) * 0.5
-	_stamp.text = "HALDEN DC-3 · SECURITY · %s          E  step away" % game.clock_text()
+	var room := size - Vector2(0, 84.0 if game.touch.active else 0.0)
+	var k := minf(1.0, minf(room.x / 1208.0, room.y / 648.0))
+	_grid.scale = Vector2(k, k)
+	_grid.position = (room - Vector2(1184, 632) * k) * 0.5
+	_stamp.text = "HALDEN DC-3 · SECURITY · %s%s" % [game.clock_text(), "" if game.touch.active else "          E  step away"]
 	_tick -= delta
 	if _tick <= 0.0:
 		_tick = 0.11

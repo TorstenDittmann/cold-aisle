@@ -18,6 +18,9 @@ var target: Object = null    # the usable thing under the reticle, if any
 var jogging := false
 var crouching := false
 var torch_flicker := 0.0     # 0..1, set by the story near Cage 7 equipment
+var touch_move := Vector2.ZERO  # the on-screen stick
+var touch_jog := false
+var touch_crouch := false
 var auto_dir := Vector3.ZERO  # tests only: walk this way as if a key were held
 
 var _shape: CapsuleShape3D
@@ -26,6 +29,7 @@ var _pitch := 0.0
 var _eye := EYE_STAND
 var _bob := 0.0
 var _stride := 0.0
+var _wake := 0.0     # 1 = lying on the floor, 0 = up
 
 
 func _ready() -> void:
@@ -61,15 +65,29 @@ func _ready() -> void:
 
 ## Called by main.gd: the player lives inside a SubViewport, which does not receive input itself.
 func handle_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not frozen:
-		rotate_y(-event.relative.x * MOUSE_SENS * sens)
-		_pitch = clampf(_pitch - event.relative.y * MOUSE_SENS * sens, -1.45, 1.45)
-		camera.rotation.x = _pitch
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		look(event.relative)
 	elif event.is_action_pressed("torch") and not frozen:
-		torch.visible = not torch.visible
-		game.sound.play("tick", -6.0, 1.6)
+		toggle_torch()
 	elif event.is_action_pressed("interact") and not frozen:
 		use_target()
+
+
+func look(rel: Vector2) -> void:
+	if frozen:
+		return
+	rotate_y(-rel.x * MOUSE_SENS * sens)
+	_pitch = clampf(_pitch - rel.y * MOUSE_SENS * sens, -1.45, 1.45)
+
+
+func toggle_torch() -> void:
+	torch.visible = not torch.visible
+	game.sound.play("tick", -6.0, 1.6)
+
+
+## Come round on the floor and get up. Used after being caught.
+func wake() -> void:
+	_wake = 1.0
 
 
 func use_target() -> void:
@@ -86,7 +104,6 @@ func place(pos: Vector3, yaw: float) -> void:
 	rotation.y = yaw
 	velocity = Vector3.ZERO
 	_pitch = 0.0
-	camera.rotation.x = 0.0
 	if pos.y < -10.0:
 		# arriving under the floor: already on hands and knees
 		_shape.height = 1.05
@@ -100,11 +117,11 @@ func _physics_process(delta: float) -> void:
 	var up := PhysicsRayQueryParameters3D.create(global_position + Vector3(0, 0.3, 0), global_position + Vector3(0, 1.9, 0), 1)
 	up.exclude = [get_rid()]
 	var low := not space.intersect_ray(up).is_empty()
-	crouching = low or (Input.is_action_pressed("crouch") and not frozen)
-	jogging = Input.is_action_pressed("jog") and not crouching and not frozen
+	crouching = low or ((Input.is_action_pressed("crouch") or touch_crouch) and not frozen)
+	jogging = (Input.is_action_pressed("jog") or touch_jog) and not crouching and not frozen
 	var speed := CROUCH_SPEED if crouching else (JOG_SPEED if jogging else WALK_SPEED)
 
-	var input := Vector2.ZERO if frozen else Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	var input := Vector2.ZERO if frozen else Input.get_vector("move_left", "move_right", "move_forward", "move_back") + touch_move
 	var dir := (global_transform.basis * Vector3(input.x, 0.0, input.y))
 	dir.y = 0.0
 	if dir.length() > 1.0:
@@ -129,8 +146,11 @@ func _physics_process(delta: float) -> void:
 	var ground_speed := Vector2(velocity.x, velocity.z).length()
 	_bob += delta * ground_speed * 3.4
 	var bob_amt := clampf(ground_speed / JOG_SPEED, 0.0, 1.0) * 0.022
-	camera.position.y = _eye + sin(_bob * 2.0) * bob_amt
+	_wake = maxf(0.0, _wake - delta / 4.5)
+	var down := smoothstep(0.0, 1.0, clampf(_wake * 1.4, 0.0, 1.0))
+	camera.position.y = lerpf(_eye + sin(_bob * 2.0) * bob_amt, 0.24, down)
 	camera.position.x = cos(_bob) * bob_amt * 0.6
+	camera.rotation = Vector3(_pitch + down * 0.5, down * 0.35, down * 1.25)
 	_stride += delta * ground_speed
 	if _stride > (0.62 if crouching else 0.78):
 		_stride = 0.0

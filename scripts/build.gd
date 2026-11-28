@@ -252,6 +252,37 @@ func set_room_lit(id: String, on: bool) -> void:
 		_swap(r, f["mesh"], _lamp_on if on else _lamp_off)
 
 
+## One fitting of a room, counted from the west or north end.
+func set_lamp(id: String, i: int, on: bool) -> void:
+	var r: Room = rooms[id]
+	var f: Dictionary = r.lamps[i]
+	if (f["light"] as Node3D).visible == on:
+		return
+	f["light"].visible = on
+	_swap(r, f["mesh"], _lamp_on if on else _lamp_off)
+
+
+func _twin(r: Room, n: Node3D) -> Node3D:
+	return r.mirror.get_child(n.get_index()) as Node3D if r.mirror and n.get_parent() == r.visual else null
+
+
+## Raise the loading dock shutter by hand: 0 is shut, 1 is open to the morning.
+func set_shutter(k: float) -> void:
+	var dock: Room = rooms["dock"]
+	for id: String in ["shutter", "dawn"]:
+		var n: Node3D = props[id]
+		var both: Array = [n, _twin(dock, n)]
+		for m: Variant in both:
+			if m == null:
+				continue
+			if id == "shutter":
+				(m as Node3D).position.y = k * 2.55
+			else:
+				(m as Node3D).visible = k > 0.01
+	var l: OmniLight3D = props["dawn_light"]
+	l.light_energy = k * 7.0
+
+
 ## Change a material on a mesh and on its reflection.
 func _swap(r: Room, mesh: MeshInstance3D, m: Material) -> void:
 	mesh.material_override = m
@@ -420,8 +451,15 @@ func _build_small_rooms() -> void:
 	var dock: Room = rooms["dock"]
 	_plain(dock, 0.2)
 	lamp(dock, -5.6, -9.0, 4.0, 8.0)
+	var shutter := Node3D.new()
+	dock.visual.add_child(shutter)
+	props["shutter"] = shutter
 	for i in 9:
-		box(dock, Vector3(-5.6, 0.2 + i * 0.3, -11.93), Vector3(3.6, 0.26, 0.08), steel)
+		box_in(shutter, Vector3(-5.6, 0.2 + i * 0.3, -11.93), Vector3(3.6, 0.26, 0.08), steel, dock.layers)
+	# what is behind it, for the one ending that gets it open
+	props["dawn"] = box(dock, Vector3(-5.6, 1.35, -11.96), Vector3(3.6, 2.7, 0.02), glow_mat(Color(0.5, 0.62, 0.8), 2.4))
+	(props["dawn"] as Node3D).visible = false
+	props["dawn_light"] = omni(dock, Vector3(-5.6, 1.2, -10.9), Color(0.6, 0.72, 0.95), 0.0, 9.0, dock.layers)
 	solid(Vector3(-5.6, 1.4, -11.95), Vector3(3.6, 2.8, 0.1))
 	usable("dock_shutter", Vector3(-5.6, 1.3, -11.8), Vector3(3.6, 2.4, 0.3))
 	block(dock, Vector3(-8.2, 0.5, -10.9), Vector3(1.2, 1.0, 1.2), crate)
@@ -453,6 +491,8 @@ func _build_small_rooms() -> void:
 	sign_text(sec, "RETURNS", Vector3(7.9, 0.5, -10.99), Basis(), 0.0011)
 	usable("desk_bin", Vector3(7.9, 0.6, -11.2), Vector3(0.8, 1.0, 0.8))
 	block(sec, Vector3(1.6, 1.0, -9.0), Vector3(0.6, 2.0, 1.6), steel)
+	prop(sec, Vector3(6.2, 0.815, -11.0), Vector3(0.22, 0.015, 0.3), mat(Color(0.72, 0.7, 0.62), 0.9))
+	usable("handover", Vector3(6.2, 0.9, -11.0), Vector3(0.5, 0.3, 0.5))
 	spots["desk"] = [Vector3(5.0, 0.02, -9.6), 0.0]
 
 	# meet-me room: where every carrier's fibre lands
@@ -489,6 +529,9 @@ func _build_small_rooms() -> void:
 	sign_text(ups, "PANEL B\nB1  B2  B3  B4  B5  B6", Vector3(25.86, 1.85, -9.0), Basis(Vector3.UP, -PI * 0.5), 0.0011)
 	props["breaker_led"] = prop(ups, Vector3(25.86, 1.35, -9.3), Vector3(0.02, 0.05, 0.05), glow_mat(AMBER, 3.0))
 	usable("breaker_b2", Vector3(25.8, 1.4, -9.0), Vector3(0.4, 1.4, 1.8))
+	prop(ups, Vector3(18.23, 1.4, -8.0), Vector3(0.02, 0.3, 0.22), mat(Color(0.72, 0.7, 0.62), 0.9))
+	sign_text(ups, "BREAKER LOG", Vector3(18.26, 1.7, -8.0), Basis(Vector3.UP, PI * 0.5), 0.0009)
+	usable("ups_log", Vector3(18.35, 1.4, -8.0), Vector3(0.3, 0.5, 0.4))
 
 
 func _build_corridor() -> void:
@@ -719,6 +762,7 @@ func set_hall_lit(hall: String, on: bool) -> void:
 			set_strip(hall, a, i, on)
 	for l: OmniLight3D in h["cross"]:
 		l.visible = on
+	(rooms["hall_" + hall] as Room).lit = on
 
 
 func set_hall_power(hall: String, power: float) -> void:

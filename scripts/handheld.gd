@@ -9,6 +9,7 @@ const AMBER := "#ffb347"
 const DIM := "#7f8791"
 
 var game: Node
+var foot: Label
 var raised := false
 var page := 0
 var unread := {}        # page index -> true
@@ -68,7 +69,7 @@ func build(g: Node, mono: Font, mono_light: Font) -> void:
 	_plan.draw.connect(_draw_plan)
 	_panel.add_child(_plan)
 
-	var foot := Label.new()
+	foot = Label.new()
 	foot.add_theme_font_override("font", mono)
 	foot.add_theme_font_size_override("font_size", 11)
 	foot.add_theme_color_override("font_color", Color(0.4, 0.42, 0.46))
@@ -81,6 +82,7 @@ func build(g: Node, mono: Font, mono_light: Font) -> void:
 func toggle() -> void:
 	raised = not raised
 	if raised:
+		foot.visible = not game.touch.active
 		# open on whatever is new
 		for i in PAGES.size():
 			if unread.has(i):
@@ -109,7 +111,11 @@ func _process(delta: float) -> void:
 	if not visible:
 		return
 	var ease_v := 1.0 - pow(1.0 - _rise, 3.0)
-	_panel.position = Vector2(size.x - W - 36.0, size.y - (H + 24.0) * ease_v + 30.0 * (1.0 - ease_v))
+	var k := minf(1.0, (size.y - 16.0) / (H + 24.0))
+	_panel.scale = Vector2(k, k)
+	# on a touch screen the round buttons keep the right-hand edge
+	var edge := 136.0 if game.touch.active else 36.0
+	_panel.position = Vector2(size.x - W * k - edge, size.y - (H + 24.0) * k * ease_v + 30.0 * (1.0 - ease_v))
 	_panel.rotation = (1.0 - ease_v) * 0.12 - 0.012
 	_head.text = "%s   %s" % [game.clock_text(), PAGES[page]]
 	if page == 1:

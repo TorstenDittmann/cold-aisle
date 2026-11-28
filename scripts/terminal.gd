@@ -70,7 +70,8 @@ func _render() -> void:
 	var t := _text + "\n\n"
 	for i in _choices.size():
 		t += "[b]%d[/b]  %s\n" % [i + 1, _choices[i][0]]
-	t += "[color=#7f8791]%s[/color]" % ("\nE  unplug" if not _choices.is_empty() else "\nE  close")
+	if not game.touch.active:
+		t += "[color=#7f8791]%s[/color]" % ("\nE  unplug" if not _choices.is_empty() else "\nE  close")
 	_body.text = t
 	_body.visible_characters = int(_shown)
 
@@ -78,7 +79,11 @@ func _render() -> void:
 func _process(delta: float) -> void:
 	if not is_open:
 		return
-	_panel.position = (size - _panel.size) * 0.5
+	# on a touch screen the buttons sit under the panel, so it gives up that strip
+	var room := size - Vector2(0, 96.0 if game.touch.active else 0.0)
+	var k := minf(1.0, minf(room.x / (_panel.size.x + 24.0), room.y / (_panel.size.y + 16.0)))
+	_panel.scale = Vector2(k, k)
+	_panel.position = (room - _panel.size * k) * 0.5
 	var total := _body.get_total_character_count()
 	if _shown < total:
 		_shown = minf(total, _shown + delta * 420.0)
@@ -115,3 +120,18 @@ func key(event: InputEventKey) -> bool:
 		close()
 		return true
 	return true
+
+
+# for the touch buttons
+func choice_count() -> int:
+	return _choices.size()
+
+
+func choose(i: int) -> void:
+	if i >= 0 and i < _choices.size():
+		_shown = 1e9
+		(_choices[i][1] as Callable).call()
+
+
+func finish_typing() -> void:
+	_shown = 1e9

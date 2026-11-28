@@ -20,6 +20,10 @@ const NOTES := {
 	"note2": "[b]NOTE[/b]  meet-me room, behind panel 7\nPort 12 is on no patch schedule. Yellow, unlabelled, straight down through the floor.\nClip the fault locator on and it glows the whole way. Open damper P-7 or you will not get past.\nIt ends under a cage that is not on the plan.\n  D. M.",
 	"note3": "[b]BADGE[/b]  on the plenum floor\n0388 · D. MARSH · NIGHTS\nLast entry, three weeks ago: MANTRAP IN. There is no exit entry.\nOn the back, in pen: It does not want you gone. It wants you certain. There is a chair.",
 }
+const READS := {
+	"handover": "[b]HANDOVER SHEET[/b]  nights, security desk\n\n  Mon   0388 MARSH    nothing to report\n  Tue   0388 MARSH    nothing to report\n  Wed   0388 MARSH    B2 tripped 23:44. reset.\n  Thu   0388 MARSH    B2 tripped 23:44. reset. same minute?\n  Fri   0388 MARSH    it knew I would check\n  Sat   0388 MARSH\n\nThree weeks of empty lines follow. The agency sent nobody.\n\n  Tonight   0417   ______________",
+	"ups_log": "[b]BREAKER LOG[/b]  UPS room, panel B\n\n  B2   tripped 23:44   reset 23:45\n  B2   tripped 23:44   reset 23:45\n  B2   tripped 23:44   reset 23:45\n\nThe same line, every night, for three weeks. Nobody was on nights for three weeks.\n\nIn the margin, in pen: there is nothing wrong with B2. It trips so that somebody walks here.  D.M.",
+}
 const DOOR_IDS := ["dock_mantrap", "mantrap_corr", "dock_corr", "security", "mmr", "ups", "hall_a1", "hall_a2", "hall_b1", "hall_b2", "chillers"]
 
 var game: Node
@@ -55,10 +59,21 @@ func setup(g: Node) -> void:
 
 # ---------------------------------------------------------------- helpers
 
+## Wait `secs` of play. Time spent in a cutscene does not count.
 func _wait(secs: float) -> bool:
 	var mine := _gen
+	while game.cine.playing and mine == _gen:
+		await get_tree().process_frame
 	await get_tree().create_timer(secs).timeout
+	while game.cine.playing and mine == _gen:
+		await get_tree().process_frame
 	return mine == _gen and not ended
+
+
+func _ops_at(text: String, t: float) -> void:
+	messages.append({"who": "ops", "text": text, "t": t})
+	game.handheld.mark(3)
+	game.notify("MESSAGE")
 
 
 func ops(text: String) -> void:
@@ -226,6 +241,10 @@ func prompt_for(id: String) -> String:
 			return "Swap the failed drive" if step == "swap" else ""
 		"desk_bin":
 			return "Drop the dead drive in returns" if step == "return" else ""
+		"handover":
+			return "Read the handover sheet"
+		"ups_log":
+			return "Read the breaker log"
 		"cctv":
 			return "Watch the cameras" if have_handheld else ""
 		"rack_b07":
@@ -277,7 +296,8 @@ func on_use(id: String) -> void:
 			have_handheld = true
 			(kit.props["handheld"] as Node3D).visible = false
 			game.sound.play("tone")
-			game.toast("Q raises the handheld. TAB turns the page.", 7.0)
+			_handheld_hints()
+			_say_later(16.0, "Housekeeping. Out of the security office, Hall A is the first door on your left. Row C is the middle aisle. You should not need Hall B tonight.")
 			ops("Evening, 0417. Operations desk here, remote as always. You are the only one on site tonight. One ticket in the queue, should be a quiet shift.")
 			ticket("4471", "Failed drive, Hall A", "Hall A · Row C · rack 147, drive bay 3. Swap it for the spare and bring the dead one back to RETURNS at the security desk. Middle aisle, left-hand row. It is showing an amber fault light.")
 			step = "swap"
@@ -289,6 +309,12 @@ func on_use(id: String) -> void:
 			_change_act(2)
 		"cctv":
 			_use_cctv()
+		"handover":
+			game.sound.play("tick", -8.0)
+			game.terminal.show_screen("HANDOVER SHEET · nights", READS["handover"])
+		"ups_log":
+			game.sound.play("tick", -8.0)
+			game.terminal.show_screen("BREAKER LOG · panel B", READS["ups_log"])
 		"rack_b07":
 			_console_b()
 		"breaker_b2":
@@ -411,11 +437,21 @@ func _save() -> void:
 	cf.save(SAVE_PATH)
 
 
-## Move to the next act where you stand: the frame closes, the clock moves on.
+## Move to the next act where you stand: the frame closes, a short scene plays, the clock
+## moves on.
 func _change_act(n: int) -> void:
 	_busy = true
 	game.sound.play("swell", -2.0)
-	await game.blink(func() -> void: begin_act(n, false), 1.4)
+	await game.fade(1.0, 0.5)
+	begin_act(n, false)
+	var shots := act_shots(n)
+	if shots.is_empty():
+		await get_tree().create_timer(1.2).timeout
+	else:
+		await game.cine.play(shots)
+		_world_for_act(n)
+	game.act_card(n, ACT_NAME[n])
+	await game.fade(0.0, 0.8)
 	_busy = false
 
 
@@ -440,7 +476,7 @@ func begin_act(n: int, fresh: bool) -> void:
 			grant(DOOR_IDS, false)
 			grant(["dock_mantrap", "mantrap_corr", "security", "hall_a1", "hall_a2"])
 			_log(_line("STAFF GATE"), "real", 1318.0)
-			game.toast("22:00. Night shift at Halden DC-3. Badge in through the mantrap.", 8.0)
+			game.toast("22:00. Badge in through the mantrap.", 8.0)
 		2:
 			step = "to_hall_b"
 			_act2()
@@ -557,6 +593,12 @@ func _act4() -> void:
 	if not await _wait(10.0):
 		return
 	ops("There is a line in your log for Hall B, east door. Six minutes from now. I would like to know who is writing those.")
+	if not await _wait(28.0):
+		return
+	_ops_at("Good shift, 0417. Badge logged out at the mantrap. Get some sleep.", 1591.0)
+	if not await _wait(7.0):
+		return
+	ops("I did not send that. Look at the time on it. I am going to stop typing for a while.")
 
 
 func _act5() -> void:
@@ -583,6 +625,7 @@ func _swap_drive() -> void:
 	add_note("label")
 	step = "return"
 	game.toast("The new drive spins up. The dead one has an asset label for Hall B, row G. It is in your notes.", 8.0)
+	_say_later(13.0, "Marsh had your shift until three weeks ago. Stopped coming in, never handed the badge back. The agency took a while to find you.")
 	if await _wait(6.0):
 		ops("Rebuild has started. Drop the dead drive in RETURNS at the security desk and I will close the ticket.")
 
@@ -616,6 +659,8 @@ func _pulse_event() -> void:
 	game.sound.duck = 0.0
 	if mine == _gen and step == "pulse":
 		step = "console"
+		you("Every status light in the aisle went out and came back, one rack at a time. It stopped next to me.")
+		_say_later(5.0, "Nothing in my logs. Nothing ran. Plug in at C-07 and read me what the console says.")
 
 
 func _console_b() -> void:
@@ -747,7 +792,7 @@ func _fire_panel() -> void:
 	kit.set_hall_lit("a", false)
 	game.sound.play("breaker", -4.0)
 	game.sound.alarm(true)
-	game.toast("FP-A: NO FAULT. PRE-DISCHARGE STARTED. Abort station: north wall, between the doors. F for the torch.", 9.0)
+	game.toast("FP-A: NO FAULT. PRE-DISCHARGE STARTED. The abort station is on the north wall, between the doors.", 9.0)
 
 
 func _abort_gas(by_itself: bool) -> void:
@@ -863,37 +908,37 @@ func _ending(kind: String) -> void:
 			]
 		"defy":
 			lines = [
-				"The shutter goes up by hand, one arm's length of chain at a time.",
-				"Behind you, Hall B is dark. Nothing in it is predicting anything.",
-				"",
 				"02:31",
+				"Outside it is getting light. The car park is empty except for your car.",
 				"",
 				"No entry is written.",
+				"",
 				"ENDING 2 OF 3 · DEFY",
 			]
 		"defy_logged":
 			lines = [
-				"The shutter goes up by hand, one arm's length of chain at a time.",
-				"On the handheld, one last line arrives before the battery dies.",
+				"Outside it is getting light. The handheld buzzes once in your pocket.",
 				"",
 				"[color=#ffb347]02:31  LOADING DOCK    GRANTED[/color]",
 				"",
-				"You went everywhere it said tonight. It had this one too.",
+				"You went everywhere it said tonight. It had this door too.",
 				"ENDING 2 OF 3 · DEFY, AS LOGGED",
 			]
 		"stay":
 			lines = [
-				"You sit. The chair is still warm.",
-				"The log scrolls under your hands. You change one line, then another.",
-				"",
 				"[color=#ffb347]22:00  0431  STAFF GATE      GRANTED\n22:02  0431  MANTRAP         GRANTED[/color]",
 				"",
 				"Somebody starts the night shift tomorrow. You already know which doors they will open.",
+				"",
 				"ENDING 3 OF 3 · STAY",
 			]
 	var cf := ConfigFile.new()
 	cf.save(SAVE_PATH)   # the night is over: clear the checkpoint
 	game.sound.alarm(false)
+	game.handheld.raised = false
+	game.terminal.close()
+	await game.fade(1.0, 0.7)
+	await game.cine.play(ending_shots(kind))
 	game.show_ending(lines)
 
 
@@ -921,7 +966,11 @@ func caught(reason: String) -> void:
 			cap = minf(cap, _queue[0]["t"])
 		game.clock = minf(game.clock + 11.0, cap)
 		_log(_line("SECURITY DESK"), "ghost")
-	await game.blink(wake, 2.2)
+		game.player.wake()
+		game.hold = true
+	await game.blink(wake, 2.2, 1.4)
+	await get_tree().create_timer(2.6).timeout
+	game.hold = false
 	_busy = false
 	game.toast("You are on the floor of the security office. The door log says you walked here.", 8.0)
 	if reason == "gas":
@@ -938,6 +987,10 @@ func on_room(now: String, _before: String) -> void:
 		game.toast("Pick up the handheld at the security desk.", 7.0)
 	if now == "hall_b" and act >= 4:
 		game.figure.back_off()
+		if not flags.has("epo"):
+			game.hint("crouch", "CTRL   crouch.  Walk, do not jog.", "DUCK   crouch.  Walk, do not jog.", func() -> bool: return game.player.crouching, 12.0)
+	if now in ["hall_a", "hall_b"] and have_handheld:
+		game.hint("jog", "SHIFT   jog", "JOG   jog", func() -> bool: return game.player.jogging, 12.0)
 	if act == 5 and flags.has("comply") and now == "mantrap":
 		_ending("comply")
 
@@ -954,6 +1007,8 @@ func _process(delta: float) -> void:
 
 	var p: Vector3 = game.player.global_position
 	var room: String = game.room
+	if room != "" and game.started and not game.player.torch.visible and (room == "plenum" or not kit.rooms[room].lit):
+		game.hint("torch", "F   torch", "TORCH   switch on the torch", func() -> bool: return game.player.torch.visible, 25.0)
 
 	if act == 2 and step == "to_hall_b" and room == "hall_b" and absf(p.x - Kit.HALL_B_X) < 1.2 and p.z > 1.5 and flags.has("hot"):
 		_pulse_event()
@@ -994,16 +1049,178 @@ func _process(delta: float) -> void:
 	game.player.torch_flicker = near_cage * 0.8
 
 
+# ---------------------------------------------------------------- teaching the controls
+
+## Called once the opening is over and you can move. Nothing about the controls is shown
+## before this; each one appears the first time it is useful.
+func on_play_begins() -> void:
+	game.hint("look", "MOUSE   look around", "DRAG the right side of the screen to look around", func() -> bool: return game.turned() > 1.2)
+	game.hint("walk", "W  A  S  D   walk", "DRAG the left side of the screen to walk", func() -> bool: return game.walked() > 2.5)
+	if act == 1 and step == "badge_in":
+		game.hint("use", "E   use what the dot is on.  Badge the reader beside the door.", "USE   badge the reader beside the door", func() -> bool: return step != "badge_in")
+	if have_handheld:
+		_handheld_hints()
+
+
+func _handheld_hints() -> void:
+	game.hint("pda", "Q   raise the handheld", "PDA   raise the handheld", func() -> bool: return game.handheld.raised)
+	game.hint("page", "TAB   next page   ·   Q   put it away", "NEXT turns the page   ·   PDA puts it away", func() -> bool: return not game.handheld.raised, 25.0)
+	game.hint("pause", "ESC   pause and settings", "II   pause and settings", func() -> bool: return game.paused, 7.0)
+
+
+# ---------------------------------------------------------------- cutscenes
+
+var _shot := {}
+
+
+func opening_shots() -> Array:
+	var bx := Kit.HALL_B_X
+	return [
+		{"from": Vector3(0, 1.5, 0.6), "to": Vector3(0, 1.5, 6.5), "look": Vector3(0, 1.25, 20), "secs": 7.0,
+			"text": "Halden DC-3. Two data halls, eleven thousand machines and, after ten at night, one person."},
+		{"from": Vector3(bx, 1.6, 17.5), "to": Vector3(bx, 1.6, 12.0), "look": Vector3(bx, 1.2, -2.0), "secs": 7.0,
+			"text": "For three weeks that person was Marsh. Marsh stopped coming in. Nobody on days can say why."},
+		{"from": Vector3(7.9, 2.0, -6.9), "to": Vector3(6.9, 1.8, -8.3), "look": Vector3(4.6, 1.2, -11.5), "secs": 6.5,
+			"text": "The work is simple. A ticket arrives on the handheld. You walk to where it says."},
+		{"from": Vector3(-7.9, 1.7, -7.2), "to": Vector3(-6.6, 1.64, -8.7), "look": Vector3(-2.1, 1.3, -9.0), "secs": 5.0,
+			"text": "Tonight it is you. Badge 0417.", "start": _shot_first_reader},
+	]
+
+
+func act_shots(n: Variant) -> Array:
+	var bx := Kit.HALL_B_X
+	_shot = {}
+	match int(n):
+		2:
+			return [
+				{"from": Vector3(8.6, 1.6, -5.2), "to": Vector3(11.4, 1.55, -5.0), "look": Vector3(bx + 1.0, 1.25, -2.8), "secs": 7.0,
+					"text": "23:10. One ticket closed. Along the corridor, two readers that were red all evening turn green.",
+					"start": _shot_readers_red, "tick": _shot_readers},
+			]
+		4:
+			return [
+				{"from": Vector3(30.6, 1.6, -4.3), "to": Vector3(28.8, 1.6, -4.3), "look": Vector3(-9, 1.3, -4.3), "secs": 7.5,
+					"text": "01:20. CH-2 restarts. Then, from the far end of the corridor, the lights go out one at a time.",
+					"start": _shot_corridor_on, "tick": _shot_corridor},
+				{"from": Vector3(bx, 1.5, -1.6), "to": Vector3(bx, 1.5, 2.6), "look": Vector3(bx, 1.2, 20), "secs": 6.5,
+					"text": "Your badge is down to four doors. Every one of them is on the way to Hall B."},
+			]
+		5:
+			return [
+				{"from": Vector3(bx + 5.44, 1.75, 4.5), "to": Vector3(bx + 5.44, 1.6, 9.8), "look": Vector3(bx + 5.3, 1.1, 17.2), "secs": 7.0,
+					"text": "02:10. Hall B, row G. A cage that is on no plan, running for one thousand one hundred and twenty-three days."},
+				{"from": Vector3(bx + 7.3, 1.6, 19.6), "to": Vector3(bx + 6.9, 1.45, 18.6), "look": Vector3(bx + 5.2, 1.0, 17.2), "secs": 6.0,
+					"text": "One console. One chair. Somebody has been sitting in it."},
+			]
+	return []
+
+
+func ending_shots(kind: String) -> Array:
+	var bx := Kit.HALL_B_X
+	_shot = {}
+	match kind:
+		"comply":
+			return [
+				{"from": Vector3(0, 1.5, 8.0), "to": Vector3(0, 1.5, 3.0), "look": Vector3(0, 1.25, 20), "secs": 7.0,
+					"text": "02:31. As the mantrap closes behind you, every light in Halden DC-3 comes back on.", "start": _shot_relight},
+				{"from": Vector3(5.0, 1.8, -9.9), "to": Vector3(5.0, 1.75, -8.4), "look": Vector3(5.0, 1.8, -11.9), "secs": 6.5,
+					"text": "The cameras come back too. They show a technician leaving, exactly on time."},
+			]
+		"defy", "defy_logged":
+			return [
+				{"from": Vector3(-5.6, 1.55, -7.2), "to": Vector3(-5.6, 1.4, -8.6), "look": Vector3(-5.6, 1.35, -11.9), "secs": 8.0,
+					"text": "The hand chain is cold. The shutter goes up one arm's length at a time.", "tick": _shot_shutter},
+				{"from": Vector3(bx, 1.5, 1.0), "to": Vector3(bx, 1.5, -1.2), "look": Vector3(bx, 1.2, 20), "secs": 6.0,
+					"text": "Behind you, Hall B is dark. Nothing in it is predicting anything."},
+			]
+		"stay":
+			return [
+				{"from": Vector3(bx + 7.6, 1.75, 19.4), "to": Vector3(bx + 6.7, 1.4, 18.2), "look": Vector3(bx + 5.2, 1.0, 17.2), "secs": 7.0,
+					"text": "You sit. The chair is still warm."},
+				{"from": Vector3(bx, 3.0, -2.2), "to": Vector3(bx, 3.0, -1.6), "look": Vector3(bx, 0.4, 11.0), "secs": 6.5,
+					"text": "The log scrolls under your hands. You change one line, then another."},
+			]
+	return []
+
+
+func _shot_first_reader() -> void:
+	kit.doors["dock_mantrap"].set_state("green")
+
+
+func _shot_readers_red() -> void:
+	for id: String in ["hall_b1", "hall_b2"]:
+		kit.doors[id].set_state("red")
+
+
+func _shot_readers(k: float) -> void:
+	if k > 0.5 and not _shot.has("b1"):
+		_shot["b1"] = true
+		kit.doors["hall_b1"].set_state("green")
+		game.sound.play("beep", -8.0)
+	if k > 0.62 and not _shot.has("b2"):
+		_shot["b2"] = true
+		kit.doors["hall_b2"].set_state("green")
+		game.sound.play("beep", -12.0)
+
+
+func _shot_corridor_on() -> void:
+	kit.set_room_lit("corridor", true)
+	_shot["out"] = 0
+
+
+func _shot_corridor(k: float) -> void:
+	var out := clampi(int(k * 10.5), 0, 8)
+	for i in 8:
+		kit.set_lamp("corridor", i, i >= out)
+	if out != int(_shot.get("out", 0)):
+		_shot["out"] = out
+		game.sound.play("tick", -3.0, randf_range(0.75, 0.9))
+
+
+func _shot_relight() -> void:
+	kit.set_hall_lit("a", true)
+	kit.set_hall_lit("b", true)
+	for id: String in ["corridor", "dock", "mantrap", "mmr", "ups", "chillers", "security"]:
+		kit.set_room_lit(id, true)
+	game.sound.play("breaker", -4.0, 1.2)
+
+
+func _shot_shutter(k: float) -> void:
+	# five pulls on the chain
+	var pulls := k * 5.0
+	var done := floorf(pulls) + smoothstep(0.0, 0.55, pulls - floorf(pulls))
+	kit.set_shutter(minf(1.0, done / 5.0))
+	if int(pulls) != int(_shot.get("pull", -1)) and k < 1.0:
+		_shot["pull"] = int(pulls)
+		game.sound.play("door", -4.0, 0.7)
+
+
 # ---------------------------------------------------------------- self-test
 
-## `-- --autotest=comply|defy|stay` plays the whole night through the same calls the
-## player makes, and fails loudly if any act cannot be completed.
-func autotest(ending: String) -> void:
+func _check(ok: bool, what: String) -> void:
+	if ok:
+		return
+	print("AUTOTEST FAILED  ", what, "  (act %d, step %s, room %s)" % [act, step, game.room])
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.coldAisleTest = 'FAILED %s'" % what.replace("'", ""), true)
+	get_tree().quit(1)
+
+
+## `autotest=comply|defy|stay` plays the whole night through the same calls the player
+## makes, and fails loudly if any act cannot be completed. `playtest=` does the same with
+## simulated keys and real walking: see bot.gd.
+func autotest(ending: String, walk := false) -> void:
+	if walk:
+		var bot := Node.new()
+		bot.set_script(load("res://scripts/bot.gd"))
+		add_child(bot)
+		bot.run(game, ending)
+		return
 	var pl: CharacterBody3D = game.player
 	var use := func(id: String, at: Vector3) -> void:
 		pl.global_position = at
 		await get_tree().create_timer(0.3).timeout
-		assert(prompt_for(id) != "", "nothing to do at " + id + " in step " + step)
+		_check(prompt_for(id) != "", "nothing to do at " + id + " in step " + step)
 		on_use(id)
 		await get_tree().create_timer(0.3).timeout
 		if game.terminal.is_open:
@@ -1014,10 +1231,10 @@ func autotest(ending: String) -> void:
 		await get_tree().create_timer(0.2).timeout
 		if d.open <= 0.0:
 			d.badge()   # a defied door refuses once
-		assert(d.open > 0.0 or d._target > 0.0, "door did not open: " + id)
+		_check(d.open > 0.0 or d._target > 0.0, "door did not open: " + id)
 		await get_tree().create_timer(0.2).timeout
 	var want := func(s: String) -> void:
-		assert(step == s, "expected step %s, got %s (act %d)" % [s, step, act])
+		_check(step == s, "expected step %s, got %s (act %d)" % [s, step, act])
 		print("  ok  act %d  %s  %s" % [act, step, game.clock_text()])
 	var defiant := ending != "comply"
 	new_game()
@@ -1037,7 +1254,7 @@ func autotest(ending: String) -> void:
 	want.call("return")
 	await use.call("desk_bin", Vector3(7.5, 0.02, -10))
 	await get_tree().create_timer(4.0).timeout
-	assert(act == 2)
+	_check(act == 2, "act 2 did not start")
 	await get_tree().create_timer(21.0).timeout
 	await badge.call("hall_b1")
 	pl.global_position = Vector3(Kit.HALL_B_X, 0.02, 3.0)
@@ -1056,7 +1273,7 @@ func autotest(ending: String) -> void:
 	await badge.call("security")
 	await use.call("cctv", Vector3(5, 0.02, -10))
 	await get_tree().create_timer(4.0).timeout
-	assert(act == 3 and game.cctv.is_open)
+	_check(act == 3 and game.cctv.is_open, "act 3 did not open the cameras")
 	await get_tree().create_timer(13.0).timeout
 	game.cctv.close()
 	want.call("fire_panel")
@@ -1071,16 +1288,16 @@ func autotest(ending: String) -> void:
 	await badge.call("chillers")
 	await use.call("chiller2", Vector3(31.8, 0.02, 2.8))
 	await get_tree().create_timer(4.0).timeout
-	assert(act == 4)
+	_check(act == 4, "act 4 did not start")
 	await use.call("note1", Vector3(31.8, 0.02, 4.4))
 	await get_tree().create_timer(5.0).timeout
 	await badge.call("hall_b2")
 	await use.call("hatch_b", Vector3(Kit.HALL_B_X - Kit.AISLE_PITCH, 0.02, Kit.AISLE_LEN + 0.5))
 	await get_tree().create_timer(1.5).timeout
-	assert(game.room == "plenum", "not in the plenum: " + game.room)
+	_check(game.room == "plenum", "not in the plenum: " + game.room)
 	await use.call("hatch_m", kit.spots["plenum_m"][0])
 	await get_tree().create_timer(1.5).timeout
-	assert(game.room == "mmr")
+	_check(game.room == "mmr", "not in the meet-me room")
 	await use.call("note2", Vector3(13.9, 0.02, -9.8))
 	await use.call("panel7", Vector3(13.4, 0.02, -9.8))
 	await use.call("damper", Vector3(17.0, 0.02, -9.0))
@@ -1089,12 +1306,12 @@ func autotest(ending: String) -> void:
 	await use.call("note3", kit.cell_pos(15, 1))
 	await use.call("hatch_c", kit.spots["plenum_c"][0])
 	await get_tree().create_timer(4.0).timeout
-	assert(act == 5 and kit.in_cage(pl.global_position), "act 5 did not start in the cage")
+	_check(act == 5 and kit.in_cage(pl.global_position), "act 5 did not start in the cage")
 	_console_7()
 	_console_7_model()
 	_console_7_subjects()
 	if ending == "stay":
-		assert(_all_notes())
+		_check(_all_notes(), "notes missing")
 		game.terminal.close()
 		_ending("stay")
 	else:
@@ -1112,8 +1329,10 @@ func autotest(ending: String) -> void:
 			await badge.call("mantrap_corr")
 			pl.global_position = Vector3(-0.5, 0.02, -9.0)
 	await get_tree().create_timer(3.0).timeout
-	assert(ended, "no ending reached")
+	_check(ended, "no ending reached")
 	print("AUTOTEST OK  ending=%s  defy=%d  clock=%s" % [ending, defy, game.clock_text()])
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.coldAisleTest = 'OK %s'" % ending, true)
 	get_tree().quit()
 
 
