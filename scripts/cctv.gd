@@ -6,8 +6,8 @@ const Kit := preload("res://scripts/build.gd")
 const FEEDS := [
 	["CAM 01  LOADING DOCK", Vector3(-8.7, 3.0, -11.7), Vector3(-4.5, 0.6, -8.0)],
 	["CAM 02  CORRIDOR", Vector3(-8.7, 3.0, -4.3), Vector3(8.0, 0.4, -4.3)],
-	["CAM 03  HALL A · AISLE 2", Vector3(0.0, 3.1, -2.3), Vector3(0.0, 0.4, 11.0)],
-	["CAM 04  HALL B · AISLE 2", Vector3(Kit.HALL_B_X, 3.1, -2.3), Vector3(Kit.HALL_B_X, 0.4, 11.0)],
+	["CAM 03  ZONE A · AISLE 2", Vector3(0.0, 3.1, -2.3), Vector3(0.0, 0.4, 11.0)],
+	["CAM 04  ZONE B · AISLE 2", Vector3(Kit.HALL_B_X, 3.1, -2.3), Vector3(Kit.HALL_B_X, 0.4, 11.0)],
 	["CAM 05  UPS ROOM", Vector3(18.5, 3.0, -11.7), Vector3(23.0, 0.6, -8.5)],
 	["CAM 06  MEET-ME ROOM", Vector3(17.7, 3.0, -6.3), Vector3(12.5, 0.6, -10.5)],
 ]

@@ -18,6 +18,7 @@ var _move_i := -1
 var _move_from := Vector2.ZERO
 var _move_at := Vector2.ZERO
 var _look_i := -1
+var _look_at := Vector2.ZERO
 
 
 func build(g: Node, mono: Font) -> void:
@@ -139,7 +140,12 @@ func _input(event: InputEvent) -> void:
 		if drag.index == _move_i:
 			_move_at = drag.position
 		elif drag.index == _look_i:
-			game.player.look(drag.relative * 2.6)
+			# measured from this finger's own last position: with two fingers down, the
+			# browser's `relative` can be taken from the other finger, and the view jumps
+			var step := drag.position - _look_at
+			_look_at = drag.position
+			if step.length() < 160.0:
+				game.player.look(step * 2.6)
 
 
 ## Returns true when the touch was used here and should go no further.
@@ -164,6 +170,7 @@ func _on_press(index: int, at: Vector2) -> bool:
 			_move_at = at
 	elif _look_i < 0:
 		_look_i = index
+		_look_at = at
 	return true
 
 

@@ -5,7 +5,7 @@ extends RefCounted
 ## Plan (x runs east, z runs south):
 ##   north row   dock | mantrap | security | meet-me room | UPS
 ##   corridor    one long corridor, a badge door to every room
-##   south row   Data Hall A | Data Hall B (with Cage 7 in its far corner) | chillers
+##   south row   the data hall, Zone A | Zone B (with Cage 7 in its far corner) | chillers
 ## The raised-floor plenum is a separate crawl space far below, reached through floor hatches.
 
 const DoorScript := preload("res://scripts/door.gd")
@@ -27,8 +27,13 @@ const HALL_CEIL := 9.0
 const RACKS := 80
 const BAY := 20                # racks drawn as one piece, so no piece sits under too many lights
 const AISLE_LEN := RACKS * RACK_W
-const HALL_Z1 := AISLE_LEN + END_PAD
-const HALL_B_X := 9.4 + HALL_WEST
+const SOUTH_PAD := 6.0         # the open floor along the far wall
+const HALL_Z1 := AISLE_LEN + SOUTH_PAD
+const GAP0 := 38               # racks left out of every row, to make the cross aisle
+const GAP1 := 42
+const GAP_Z0 := GAP0 * RACK_W
+const GAP_Z1 := (GAP1 + 1) * RACK_W
+const HALL_B_X := HALL_HALF_W + HALL_WEST   # Zone B starts where Zone A stops: it is one hall
 const CH_DX := HALL_B_X - 18.4   # how far east the chiller plant sits
 const CAGE_Z0 := AISLE_LEN - 6.64
 const CONSOLE_Z := CAGE_Z0 + 4.0
@@ -49,7 +54,7 @@ const WARM := Color(1.0, 0.8, 0.58)
 const TEAL := Color(0.1, 0.9, 0.78)
 const AMBER := Color(1.0, 0.7, 0.28)
 
-## '#' wall, '.' crawl space, H/M/C hatches (Hall B, meet-me room, Cage 7), D damper, N the last note.
+## '#' wall, '.' crawl space, H/M/C hatches (Zone B, meet-me room, Cage 7), D damper, N the last note.
 const PLENUM_MAP: Array[String] = [
 	"#################",
 	"#H..#.....#....N#",
@@ -129,8 +134,8 @@ func build(game: Node, world_node: Node3D) -> void:
 	_room("mmr", "MEET-ME ROOM", 9.2, 18.0, ROOM_Z0, ROOM_Z1, 12, "bed_room")
 	_room("ups", "UPS ROOM", 18.2, 26.0, ROOM_Z0, ROOM_Z1, 13, "bed_plant")
 	_room("corridor", "CORRIDOR", CORR_X0, CORR_X1, CORR_Z0, CORR_Z1, 8, "bed_room")
-	_room("hall_a", "DATA HALL A", -HALL_WEST, HALL_HALF_W, -END_PAD, HALL_Z1, 3, "bed_hall_a")
-	_room("hall_b", "DATA HALL B", HALL_B_X - HALL_WEST, HALL_B_X + HALL_HALF_W, -END_PAD, HALL_Z1, 7, "bed_hall_b")
+	_room("hall_a", "DATA HALL · ZONE A", -HALL_WEST, HALL_HALF_W, -END_PAD, HALL_Z1, 3, "bed_hall_a")
+	_room("hall_b", "DATA HALL · ZONE B", HALL_B_X - HALL_WEST, HALL_B_X + HALL_HALF_W, -END_PAD, HALL_Z1, 7, "bed_hall_b")
 	_room("chillers", "CHILLER PLANT", 27.8 + CH_DX, 36.0 + CH_DX, -END_PAD, 10.0, 14, "bed_plant")
 	_room("plenum", "PLENUM", -1.0, 17.0 * CELL, PLENUM_Z - 1.0, PLENUM_Z + 11.0 * CELL, 15, "bed_plenum")
 
@@ -143,6 +148,7 @@ func build(game: Node, world_node: Node3D) -> void:
 	_build_doors()
 	_build_small_rooms()
 	_build_corridor()
+	_dress_corridor()
 	_build_hall("a", 0.0, 0, false)
 	_build_hall("b", HALL_B_X, 4, true)
 	_build_chillers()
@@ -446,7 +452,6 @@ func _build_walls() -> void:
 	_wall_now = _hall_wall_mat
 	_wall_h = HALL_CEIL
 	wall_z(ha.visual, ax0 - 0.1, -END_PAD, HALL_Z1, [], ha.layers)
-	wall_z(_shared("hall_a", "hall_b"), 9.2, -END_PAD - 0.2, HALL_Z1 + 0.2, [], ha.layers | hb.layers, 0.4)
 	wall_z(_shared("hall_b", "chillers"), bx1 + 0.2, -END_PAD - 0.2, HALL_Z1 + 0.2, [], hb.layers | ch.layers, 0.4)
 	wall_x(ha.visual, HALL_Z1 + 0.1, ax0 - 0.2, 9.0, [], ha.layers)
 	wall_x(hb.visual, HALL_Z1 + 0.1, bx0, bx1, [], hb.layers)
@@ -475,10 +480,10 @@ func _build_doors() -> void:
 	_door("security", "SECURITY DESK", Vector3(5.0, 0, ROOM_Z1 + 0.1), true, "security", "corridor")
 	_door("mmr", "MEET-ME ROOM", Vector3(13.5, 0, ROOM_Z1 + 0.1), true, "mmr", "corridor")
 	_door("ups", "UPS ROOM", Vector3(22.0, 0, ROOM_Z1 + 0.1), true, "ups", "corridor")
-	_door("hall_a1", "HALL A-1", Vector3(-AISLE_PITCH, 0, -END_PAD - 0.1), true, "corridor", "hall_a")
-	_door("hall_a2", "HALL A-2", Vector3(AISLE_PITCH, 0, -END_PAD - 0.1), true, "corridor", "hall_a")
-	_door("hall_b1", "HALL B-1", Vector3(HALL_B_X - AISLE_PITCH, 0, -END_PAD - 0.1), true, "corridor", "hall_b")
-	_door("hall_b2", "HALL B-2", Vector3(HALL_B_X + AISLE_PITCH, 0, -END_PAD - 0.1), true, "corridor", "hall_b")
+	_door("hall_a1", "ZONE A-1", Vector3(-AISLE_PITCH, 0, -END_PAD - 0.1), true, "corridor", "hall_a")
+	_door("hall_a2", "ZONE A-2", Vector3(AISLE_PITCH, 0, -END_PAD - 0.1), true, "corridor", "hall_a")
+	_door("hall_b1", "ZONE B-1", Vector3(HALL_B_X - AISLE_PITCH, 0, -END_PAD - 0.1), true, "corridor", "hall_b")
+	_door("hall_b2", "ZONE B-2", Vector3(HALL_B_X + AISLE_PITCH, 0, -END_PAD - 0.1), true, "corridor", "hall_b")
 	_door("chillers", "CHILLER PLANT", Vector3(30.0 + CH_DX, 0, -END_PAD - 0.1), true, "corridor", "chillers")
 
 
@@ -658,7 +663,7 @@ func _build_hall(id: String, ox: float, bit0: int, is_b: bool) -> void:
 		floor_piece(r, x0, x1, -END_PAD, 0.0, all)
 		floor_piece(r, x0, x1, AISLE_LEN, HALL_Z1, all)
 	# the roof is a long way up and nothing lights it
-	box(r, Vector3((x_w + x_e) * 0.5, HALL_CEIL + 0.1, AISLE_LEN * 0.5), Vector3(x_e - x_w + 0.4, 0.2, AISLE_LEN + END_PAD * 2.0 + 0.4), _void_mat, shell)
+	box(r, Vector3((x_w + x_e) * 0.5, HALL_CEIL + 0.1, (HALL_Z1 - END_PAD) * 0.5), Vector3(x_e - x_w + 0.4, 0.2, HALL_Z1 + END_PAD + 0.4), _void_mat, shell)
 	# high-bay fittings on standby: pinpricks that show how far the roof goes
 	var dot := QuadMesh.new()
 	dot.size = Vector2(0.5, 0.12)
@@ -692,7 +697,7 @@ func _build_hall(id: String, ox: float, bit0: int, is_b: bool) -> void:
 	if is_b:
 		_build_cage(r, h)
 		prop(r, Vector3(ox, 1.3, -END_PAD + 0.06), Vector3(0.22, 0.3, 0.08), glow_mat(Color(0.9, 0.08, 0.05), 1.6), all)
-		sign_text(r, "EPO · HALL B", Vector3(ox, 1.62, -END_PAD + 0.07), Basis(), 0.0011)
+		sign_text(r, "EPO · ZONE B", Vector3(ox, 1.62, -END_PAD + 0.07), Basis(), 0.0011)
 		usable("epo_b", Vector3(ox, 1.3, -END_PAD + 0.15), Vector3(0.5, 0.6, 0.3))
 		var hx := ox - AISLE_PITCH
 		props["hatch_b"] = prop(r, Vector3(hx, 0.012, AISLE_LEN + 1.3), Vector3(0.6, 0.02, 0.6), mat(Color(0.42, 0.34, 0.06), 0.7), all)
@@ -762,7 +767,7 @@ func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 	var front_mesh := QuadMesh.new()
 	front_mesh.size = Vector2(RACK_W, RACK_H)
 	front_mesh.material = front_mat
-	# a spool of fibre slack above every rack: yellow in Hall A, teal in Hall B
+	# a spool of fibre slack above every rack: yellow in Zone A, teal in Zone B
 	var cable := mat(Color(0.05, 0.5, 0.45) if is_b else Color(0.85, 0.58, 0.04), 0.5)
 	var torus := TorusMesh.new()
 	torus.inner_radius = 0.154
@@ -781,9 +786,10 @@ func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 	while i0 < RACKS:
 		var i1 := mini(count, i0 + BAY)
 		var bz0 := i0 * RACK_W
-		var bay := {"v": Node3D.new(), "e": Node3D.new(), "m": null, "z0": bz0}
+		var bay := {"v": Node3D.new(), "e": Node3D.new(), "d": Node3D.new(), "m": null, "z0": bz0}
 		r.visual.add_child(bay["v"])
 		r.extra.add_child(bay["e"])
+		bay["e"].add_child(bay["d"])
 		bays.append(bay)
 		_into_v = bay["v"]
 		_into_e = bay["e"]
@@ -799,15 +805,25 @@ func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 		for side: float in [-1.0, 1.0]:
 			var facing := Basis(Vector3.UP, -side * PI * 0.5)   # quad normal points into the aisle
 			for i in range(i0, i1):
+				if i >= GAP0 and i <= GAP1:
+					continue
 				var z := (i + 0.5) * RACK_W
 				bodies.append(Transform3D(Basis(), Vector3(cx + side * ROW_X, RACK_H * 0.5, z)))
 				fronts.append(Transform3D(facing, Vector3(cx + side * (FRONT_X - 0.004), RACK_H * 0.5, z)))
 				spools.append(Transform3D(upright, Vector3(cx + side * 1.305, 2.62, z)))
 				if (story_aisle and i % 4 == 2) or (not story_aisle and i % 10 == 2) or (story_aisle and not is_b and i == 7):
 					var letter := row_letter(a, side)
-					var text := ("HALL B · ROW %s · %02d" % [letter, i + 1]) if is_b else ("HALL A · ROW %s · %d" % [letter, 140 + i])
+					var text := ("ZONE B · ROW %s · %02d" % [letter, i + 1]) if is_b else ("ZONE A · ROW %s · %d" % [letter, 140 + i])
 					_rack_label(r, cx, side, z, text, layers)
-			box(r, Vector3(cx + side * 2.05, 2.72, bmid), Vector3(1.4, 1.14, blen), _dark_mat, layers)
+			var s0 := bz0
+			var s1 := bz0 + blen
+			if i0 <= GAP1 and i1 > GAP0:
+				if i0 < GAP0:
+					s1 = GAP_Z0
+				else:
+					s0 = minf(GAP_Z1, s1)
+			if s1 - s0 > 0.05:
+				box(r, Vector3(cx + side * 2.05, 2.72, (s0 + s1) * 0.5), Vector3(1.4, 1.14, s1 - s0), _dark_mat, layers)
 		_mm(r, body_mesh, bodies, layers)
 		_mm(r, front_mesh, fronts, layers)
 		_mm(r, torus, spools, layers)
@@ -815,19 +831,25 @@ func _build_aisle(r: Room, h: Dictionary, a: int) -> void:
 		box(r, Vector3(cx, 2.86, bmid), Vector3(0.6, 0.04, blen), tray, layers)
 		for side: float in [-1.0, 1.0]:
 			box(r, Vector3(cx + side * 0.13, 2.925, bmid), Vector3(0.09, 0.09, blen), cable, layers)
+		_dress_bay(r, h, a, bay, i0, i1, x_w, x_e)
 		i0 += BAY
 	_into_v = null
 	_into_e = null
 	for side: float in [-1.0, 1.0]:
-		solid(Vector3(cx + side * ROW_X, RACK_H * 0.5, z_mid), Vector3(RACK_D, RACK_H, length))
+		solid(Vector3(cx + side * ROW_X, RACK_H * 0.5, GAP_Z0 * 0.5), Vector3(RACK_D, RACK_H, GAP_Z0))
+		solid(Vector3(cx + side * ROW_X, RACK_H * 0.5, (GAP_Z1 + length) * 0.5), Vector3(RACK_D, RACK_H, length - GAP_Z1))
 
 	# a dimmer fitting in each cross corridor, at the mouth of the aisle, and the row
 	# letters hung over it where they can be read from the far side of the hall
-	for z: float in [-END_PAD * 0.5, AISLE_LEN + END_PAD * 0.5]:
+	for z: float in [-END_PAD * 0.5, AISLE_LEN + END_PAD * 0.5, AISLE_LEN + 4.2]:
 		if is_b and a == AISLES - 1 and z > 0.0:
 			continue   # Cage 7 stands here
-		var cl := omni(r, Vector3(cx, 2.9, z), TEAL if is_b else COOL, 0.7 if is_b else 1.6, 6.0, layers | int(h["shell"]))
+		var cl := omni(r, Vector3(cx, 2.9, z), TEAL if is_b else COOL, 1.0 if is_b else 1.6, 6.0, layers | int(h["shell"]))
 		h["cross"].append(cl)
+		if z > AISLE_LEN + 2.0:
+			cl.omni_range = 7.5
+			cl.light_energy *= 1.5
+			continue
 		var north := z < 0.0
 		var sz := -0.1 if north else length + 0.1
 		var out := -1.0 if north else 1.0
@@ -885,25 +907,35 @@ func light_strips(eye: Vector3, delta: float, whole_mid := false) -> void:
 	if _lights_t > 0.0:
 		return
 	_lights_t = 0.1
-	var bay_len := BAY * RACK_W
+	var eye2 := Vector2(eye.x, eye.z)
+	var inside: bool = (rooms["hall_a"] as Room).rect.has_point(eye2) or (rooms["hall_b"] as Room).rect.has_point(eye2)
+	# standing in the spine or against an outer wall, the nearest rows are still drawn
+	var reach := 100.0
+	for id: String in halls:
+		for a in AISLES:
+			reach = minf(reach, absf(eye.x - aisle_x(id, a)))
+	reach = 2.75 if reach < 2.75 else reach + 0.4
 	for id: String in halls:
 		var h: Dictionary = halls[id]
 		var r: Room = rooms["hall_" + id]
 		if not r.visual.visible:
 			continue
-		var inside := r.rect.has_point(Vector2(eye.x, eye.z))
 		var above := eye.y > 3.4
-		var at_end := eye.z < 1.5 or eye.z > AISLE_LEN - 1.5
-		var deep := inside and eye.z > 2.2 and eye.z < AISLE_LEN - 2.2 and not above
+		var near_gap := absf(eye.z - (GAP_Z0 + GAP_Z1) * 0.5) < 4.0
+		var at_end := eye.z < 1.5 or eye.z > AISLE_LEN - 1.5 or near_gap
+		var deep := inside and eye.z > 2.2 and eye.z < AISLE_LEN - 2.2 and not above and not near_gap
 		var near_bay := 0 if eye.z < AISLE_LEN * 0.5 else int(ceil(float(RACKS) / BAY)) - 1
 		for a in AISLES:
 			var dx := absf(eye.x - aisle_x(id, a))
 			var bays: Array = h["bays"][a]
 			for b in bays.size():
-				var see := above or dx < 2.75 or (whole_mid and a == MID)
-				if not see and not deep:
+				var see := above or dx < reach or (whole_mid and a == MID)
+				if not see and near_gap and not above:
+					see = b == 1 or b == 2   # from the cross aisle, the rows either side of it
+				elif not see and not deep:
 					see = b == near_bay   # from a cross corridor only the mouth of each aisle shows
 				var bay: Dictionary = bays[b]
+				(bay["d"] as Node3D).visible = dx < reach or (above and dx < 9.0)
 				if (bay["v"] as Node3D).visible != see:
 					bay["v"].visible = see
 					bay["e"].visible = see
@@ -913,7 +945,7 @@ func light_strips(eye: Vector3, delta: float, whole_mid := false) -> void:
 				var k := 0.0
 				if s["on"]:
 					var dz := absf(eye.z - float(s["z"]))
-					if dx < 2.8:
+					if dx < reach + 0.05:
 						k = clampf((36.0 - dz) / 6.0, 0.0, 1.0)
 					k = maxf(k, clampf((16.0 - sqrt(dx * dx + dz * dz)) / 4.0, 0.0, 1.0))
 					if at_end or above:
@@ -982,7 +1014,7 @@ func _rack_label(r: Room, cx: float, side: float, z: float, text: String, layers
 	(_into_e if _into_e else r.extra).add_child(label)
 
 
-## Cage 7: a wire cage in the far corner of Hall B, with no door on the hall side.
+## Cage 7: a wire cage in the far corner of Zone B, with no door on the hall side.
 func _build_cage(r: Room, h: Dictionary) -> void:
 	var ox: float = h["ox"]
 	var x0 := ox + 3.2
@@ -1292,6 +1324,9 @@ func room_at(p: Vector3) -> String:
 ## Show the room you are in, and whatever can be seen through open doors.
 func show_rooms(current: String, everything := false) -> void:
 	var seen := {current: true}
+	if current.begins_with("hall_"):
+		seen["hall_a"] = true
+		seen["hall_b"] = true
 	if not everything:
 		for pass_i in 2:
 			for id: String in doors:
@@ -1301,6 +1336,9 @@ func show_rooms(current: String, everything := false) -> void:
 						seen[d.room_b] = true
 					elif seen.has(d.room_b):
 						seen[d.room_a] = true
+			if seen.has("hall_a") or seen.has("hall_b"):
+				seen["hall_a"] = true
+				seen["hall_b"] = true
 	for id: String in rooms:
 		var r: Room = rooms[id]
 		var on: bool = everything or seen.has(id)
@@ -1315,3 +1353,456 @@ func show_rooms(current: String, everything := false) -> void:
 	for id: String in doors:
 		var d: Node = doors[id]
 		d.visible = everything or seen.has(d.room_a) or seen.has(d.room_b)
+
+
+# ---------------------------------------------------------------- set dressing
+
+## Everything below is furniture: the things a working building collects. Boxes of one
+## material in one place are drawn together, so a bay of clutter costs a handful of draws.
+var _dm := {}
+
+
+func _m(id: String) -> Material:
+	if _dm.is_empty():
+		_dm = {
+			"steel": mat(Color(0.3, 0.31, 0.33), 0.45, 0.6),
+			"duct": mat(Color(0.34, 0.35, 0.36), 0.5, 0.55),
+			"panel": mat(Color(0.15, 0.155, 0.165), 0.5, 0.4),
+			"dark": mat(Color(0.05, 0.05, 0.055), 0.7, 0.2),
+			"concrete": mat(Color(0.2, 0.2, 0.2), 0.95),
+			"card": mat(Color(0.42, 0.31, 0.18), 0.95),
+			"wood": mat(Color(0.36, 0.27, 0.16), 0.9),
+			"yellow": mat(Color(0.75, 0.58, 0.06), 0.7),
+			"line": mat(Color(0.5, 0.4, 0.06), 0.8),
+			"orange": mat(Color(0.85, 0.3, 0.05), 0.7),
+			"red": mat(Color(0.6, 0.06, 0.04), 0.5, 0.2),
+			"blue": mat(Color(0.08, 0.2, 0.42), 0.5, 0.3),
+			"pipe_r": mat(Color(0.42, 0.14, 0.08), 0.5, 0.3),
+			"green": mat(Color(0.06, 0.38, 0.16), 0.6),
+			"white": mat(Color(0.62, 0.62, 0.6), 0.8),
+			"alu": mat(Color(0.5, 0.51, 0.52), 0.35, 0.8),
+			"tote": mat(Color(0.1, 0.24, 0.4), 0.6),
+			"cable": mat(Color(0.85, 0.58, 0.04), 0.5),
+			"wrap": mat(Color(0.26, 0.27, 0.28), 0.25, 0.1),
+			"screen": glow_mat(Color(0.12, 0.42, 0.5), 1.3),
+			"led_g": glow_mat(Color(0.1, 1.0, 0.35), 3.0),
+			"led_a": glow_mat(AMBER, 3.0),
+			"vend": glow_mat(Color(0.55, 0.78, 1.0), 1.5),
+			"void": _void_mat,
+		}
+	return _dm[id]
+
+
+func _q(batch: Dictionary, id: String, pos: Vector3, size: Vector3, turn := Basis()) -> void:
+	var m := _m(id)
+	if not batch.has(m):
+		batch[m] = []
+	(batch[m] as Array).append(Transform3D(turn * Basis.from_scale(size), pos))
+
+
+func _flush(batch: Dictionary, parent: Node3D, layers: int, round := false) -> void:
+	for m: Material in batch:
+		var mesh: Mesh
+		if round:
+			var c := CylinderMesh.new()
+			c.top_radius = 0.5
+			c.bottom_radius = 0.5
+			c.height = 1.0
+			c.radial_segments = 10
+			c.rings = 1
+			c.material = m
+			mesh = c
+		else:
+			var bx := BoxMesh.new()
+			bx.material = m
+			mesh = bx
+		var ts: Array = batch[m]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = mesh
+		mm.instance_count = ts.size()
+		for i in ts.size():
+			mm.set_instance_transform(i, ts[i])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.layers = layers
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mmi)
+	batch.clear()
+
+
+func _dress_bay(r: Room, h: Dictionary, a: int, bay: Dictionary, i0: int, i1: int, x_w: float, x_e: float) -> void:
+	var is_b: bool = h["b"]
+	var ox: float = h["ox"]
+	var zone := "B" if is_b else "A"
+	var cx := ox + (a - MID) * AISLE_PITCH
+	var layers := 1 << (int(h["bit0"]) + a % 3)
+	var shell := int(h["shell"])
+	var count: int = h["racks"][a]
+	var bz0 := i0 * RACK_W
+	var bz1 := i1 * RACK_W
+	var bmid := (bz0 + bz1) * 0.5
+	var b := i0 / BAY
+	var story_aisle := absi(a - MID) <= 1
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s %d %d" % [zone, a, b])
+	var e := {}      # seen with the bay
+	var d := {}      # small things, seen only from this aisle
+	var round := {}
+	var west_wall := a == 0 and not is_b
+	var east_wall := a == AISLES - 1 and is_b
+	var hot_door := a < AISLES - 1   # the hot aisle east of this row is shut in behind doors
+
+	# services overhead: a duct across the hall, chilled water along the aisle
+	_q(e, "duct", Vector3((x_w + x_e) * 0.5, 4.3, bz0 + 4.0), Vector3(x_e - x_w, 0.5, 0.8))
+	_q(e, "yellow", Vector3((x_w + x_e) * 0.5, 3.74, bz0 + 9.6), Vector3(x_e - x_w, 0.1, 0.22))
+	_q(e, "blue", Vector3(cx - 0.74, 3.6, bmid), Vector3(0.13, 0.13, bz1 - bz0))
+	_q(e, "pipe_r", Vector3(cx + 0.74, 3.6, bmid), Vector3(0.13, 0.13, bz1 - bz0))
+	for k in 3:
+		var hz := bz0 + 1.6 + k * 4.4
+		_q(e, "dark", Vector3(cx, 3.5, hz), Vector3(1.9, 0.04, 0.06))
+		for side: float in [-1.0, 1.0]:
+			_q(e, "dark", Vector3(cx + side * 0.92, 4.6, hz), Vector3(0.025, 2.2, 0.025))
+
+	# the ends of the rows: a power panel on each, and a door across each hot aisle
+	var ends: Array = []
+	if i0 == 0:
+		ends.append([-0.03, -1.0])
+	if i1 == count:
+		ends.append([bz1 + 0.03, 1.0])
+	if i0 < GAP0 and i1 > GAP0:
+		ends.append([GAP_Z0 + 0.03, 1.0])
+	if i0 <= GAP1 and i1 > GAP1 + 1 and i0 > GAP0 - BAY:
+		ends.append([GAP_Z1 - 0.03, -1.0])
+	for end: Array in ends:
+		var ez: float = end[0]
+		var out: float = end[1]
+		for side: float in [-1.0, 1.0]:
+			var rx := cx + side * ROW_X
+			_q(e, "panel", Vector3(rx, RACK_H * 0.5, ez), Vector3(RACK_D - 0.03, RACK_H - 0.02, 0.04))
+			_q(e, "steel", Vector3(rx - 0.18, 1.3, ez + out * 0.05), Vector3(0.42, 0.62, 0.07))
+			_q(e, "led_g" if rng.randf() < 0.85 else "led_a", Vector3(rx - 0.18, 1.52, ez + out * 0.09), Vector3(0.03, 0.03, 0.01))
+			_q(e, "red", Vector3(rx + 0.3, 0.42, ez + out * 0.1), Vector3(0.12, 0.42, 0.12))
+		if hot_door:
+			var hx := cx + AISLE_PITCH * 0.5
+			_q(e, "steel", Vector3(hx, 1.2, ez - out * 0.2), Vector3(1.0, 2.4, 0.05))
+			_q(e, "line", Vector3(hx, 1.45, ez - out * 0.17), Vector3(0.96, 0.1, 0.02))
+			_q(e, "dark", Vector3(hx, 1.75, ez - out * 0.17), Vector3(0.3, 0.3, 0.02))
+			solid(Vector3(hx, 1.2, ez - out * 0.2), Vector3(1.0, 2.4, 0.1))
+		# a painted line where the aisle meets the cross corridor
+		_q(e, "line", Vector3((x_w + x_e) * 0.5, 0.004, ez + out * 0.28), Vector3(x_e - x_w, 0.008, 0.08))
+
+	# cooling units along the outer walls
+	if west_wall or east_wall:
+		var wx := x_w + 0.42 if west_wall else x_e - 0.42
+		var face := 1.0 if west_wall else -1.0
+		h["cross"].append(omni(r, Vector3(wx + face * 0.6, 2.6, bmid), TEAL if is_b else COOL, 1.0, 6.5, layers | shell))
+		for k in 2:
+			var uz := bz0 + 3.1 + k * 6.2
+			if uz > bz1 - 1.3:
+				continue
+			_q(e, "steel", Vector3(wx, 1.05, uz), Vector3(0.8, 2.1, 2.3))
+			_q(e, "dark", Vector3(wx + face * 0.405, 0.6, uz), Vector3(0.02, 0.8, 1.9))
+			_q(e, "screen", Vector3(wx + face * 0.405, 1.6, uz - 0.7), Vector3(0.02, 0.12, 0.2))
+			_q(e, "led_g", Vector3(wx + face * 0.405, 1.6, uz - 0.45), Vector3(0.02, 0.03, 0.03))
+			_q(e, "blue", Vector3(wx, 3.2, uz + 0.6), Vector3(0.16, 2.2, 0.16))
+			_q(e, "pipe_r", Vector3(wx, 3.2, uz + 0.9), Vector3(0.16, 2.2, 0.16))
+			solid(Vector3(wx, 1.05, uz), Vector3(0.8, 2.1, 2.3))
+			sign_text(r, "CRAH %s-%02d" % [zone, b * 2 + k + 1], Vector3(wx + face * 0.41, 1.85, uz), Basis(Vector3.UP, face * PI * 0.5), 0.0016)
+	# columns down the spine between the two zones
+	if a == AISLES - 1 and not is_b:
+		var col := {}
+		_q(col, "concrete", Vector3(x_e, HALL_CEIL * 0.5, bmid), Vector3(0.55, HALL_CEIL, 0.55))
+		_q(col, "yellow", Vector3(x_e, 0.5, bmid), Vector3(0.6, 1.0, 0.6))
+		_q(col, "dark", Vector3(x_e, 0.5, bmid), Vector3(0.61, 0.18, 0.61))
+		_q(col, "red", Vector3(x_e - 0.34, 1.35, bmid), Vector3(0.12, 0.42, 0.12))
+		solid(Vector3(x_e, 1.5, bmid), Vector3(0.6, 3.0, 0.6))
+		_flush(col, bay["e"], layers | (1 << 4) | shell)
+		h["cross"].append(omni(r, Vector3(x_e, 2.7, bmid + 1.2), COOL, 1.3, 6.5, layers | (1 << 4) | shell))
+
+	# the corridor wall at the near end
+	if i0 == 0:
+		var wz := -END_PAD + 0.02
+		var px := cx + AISLE_PITCH * 0.5
+		if hot_door:
+			_q(e, "concrete", Vector3(px, HALL_CEIL * 0.5, wz + 0.12), Vector3(0.42, HALL_CEIL, 0.24))
+			_q(e, "line", Vector3(px, 0.6, wz + 0.25), Vector3(0.44, 1.2, 0.02))
+		var ix := cx + AISLE_PITCH * 0.5 - 0.75
+		match a % 4:
+			0:
+				_q(e, "red", Vector3(ix, 0.95, wz + 0.1), Vector3(0.15, 0.5, 0.15))
+				_q(e, "red", Vector3(ix, 1.6, wz + 0.02), Vector3(0.22, 0.22, 0.02))
+			1:
+				_q(e, "green", Vector3(ix, 1.45, wz + 0.06), Vector3(0.34, 0.34, 0.12))
+				_q(e, "white", Vector3(ix, 1.45, wz + 0.125), Vector3(0.2, 0.06, 0.01))
+				_q(e, "white", Vector3(ix, 1.45, wz + 0.125), Vector3(0.06, 0.2, 0.01))
+			2:
+				_q(e, "white", Vector3(ix, 1.55, wz + 0.02), Vector3(0.9, 0.5, 0.02))
+				sign_text(r, "NO FOOD OR DRINK\nNO LONE WORKING", Vector3(ix, 1.55, wz + 0.035), Basis(), 0.0015, Color(0.08, 0.08, 0.09))
+			3:
+				_q(e, "dark", Vector3(ix, 1.4, wz + 0.05), Vector3(0.2, 0.32, 0.1))
+				_q(e, "steel", Vector3(ix, 1.75, wz + 0.02), Vector3(0.3, 0.12, 0.02))
+				sign_text(r, "OPS 2001", Vector3(ix, 1.75, wz + 0.035), Basis(), 0.0011, Color(0.05, 0.05, 0.05))
+		if a == MID:
+			var big := sign_text(r, "ZONE %s" % zone, Vector3(ox - 2.2, 2.6, wz + 0.02), Basis(), 0.006, Color(0.3, 0.32, 0.35))
+			big.layers = shell
+
+	# the open floor along the far wall: stores, spares, the gas for the fire system
+	if i0 + BAY >= RACKS:
+		var sz := HALL_Z1
+		_q(e, "line", Vector3((x_w + x_e) * 0.5, 0.004, AISLE_LEN + 2.3), Vector3(x_e - x_w, 0.008, 0.08))
+		if hot_door:
+			_q(e, "concrete", Vector3(cx + AISLE_PITCH * 0.5, HALL_CEIL * 0.5, sz - 0.15), Vector3(0.45, HALL_CEIL, 0.3))
+		if a != MID and not east_wall:
+			var kind := (a + (2 if is_b else 0)) % 5
+			var fz := sz - 0.85
+			# a bay marked out on the floor
+			for sx: float in [-1.0, 1.0]:
+				_q(e, "line", Vector3(cx + sx * 1.5, 0.004, sz - 0.9), Vector3(0.07, 0.008, 1.8))
+			_q(e, "line", Vector3(cx, 0.004, sz - 1.8), Vector3(3.07, 0.008, 0.07))
+			match kind:
+				0:
+					for k in 7:
+						_q(round, "red", Vector3(cx + (k - 3.0) * 0.32, 0.8, sz - 0.3), Vector3(0.25, 1.6, 0.25))
+						_q(round, "steel", Vector3(cx + (k - 3.0) * 0.32, 1.66, sz - 0.3), Vector3(0.07, 0.14, 0.07))
+					_q(e, "steel", Vector3(cx, 1.78, sz - 0.3), Vector3(2.3, 0.06, 0.06))
+					_q(e, "steel", Vector3(cx, 1.1, sz - 0.46), Vector3(2.4, 0.05, 0.04))
+					_q(e, "steel", Vector3(cx + 1.15, 2.6, sz - 0.3), Vector3(0.06, 1.7, 0.06))
+					sign_text(r, "IG-541 · DO NOT ISOLATE", Vector3(cx, 2.1, sz - 0.02), Basis(Vector3.UP, PI), 0.0016)
+					solid(Vector3(cx, 0.9, sz - 0.3), Vector3(2.4, 1.8, 0.5))
+				1:
+					for k in 2:
+						var px2 := cx - 0.75 + k * 1.5
+						_q(e, "wood", Vector3(px2, 0.07, fz), Vector3(1.2, 0.14, 1.0))
+						for j in 4:
+							_q(e, "card", Vector3(px2 - 0.29 + (j % 2) * 0.58, 0.4 + (j / 2) * 0.5, fz), Vector3(0.55, 0.48, 0.8))
+						if k == 0:
+							_q(e, "wrap", Vector3(px2, 0.66, fz), Vector3(1.18, 1.02, 0.84))
+					solid(Vector3(cx, 0.6, fz), Vector3(2.7, 1.2, 1.0))
+				2:
+					for k in 3:
+						_q(e, "wrap", Vector3(cx - 0.9 + k * 0.66, RACK_H * 0.5, sz - 0.6), Vector3(0.62, RACK_H, 1.0))
+					_q(round, "wood", Vector3(cx + 1.15, 0.45, sz - 0.5), Vector3(0.9, 0.5, 0.9), Basis(Vector3.RIGHT, PI * 0.5))
+					_q(round, "cable", Vector3(cx + 1.15, 0.45, sz - 0.5), Vector3(0.6, 0.42, 0.6), Basis(Vector3.RIGHT, PI * 0.5))
+					solid(Vector3(cx, 1.0, sz - 0.6), Vector3(2.9, 2.0, 1.0))
+				3:
+					_q(e, "wood", Vector3(cx, 0.9, sz - 0.42), Vector3(2.0, 0.05, 0.75))
+					for sx: float in [-1.0, 1.0]:
+						_q(e, "steel", Vector3(cx + sx * 0.92, 0.44, sz - 0.42), Vector3(0.05, 0.88, 0.7))
+					_q(e, "dark", Vector3(cx - 0.4, 1.2, sz - 0.2), Vector3(0.55, 0.36, 0.05))
+					_q(e, "screen", Vector3(cx - 0.4, 1.2, sz - 0.23), Vector3(0.5, 0.31, 0.01))
+					_q(e, "red", Vector3(cx + 0.55, 1.03, sz - 0.4), Vector3(0.5, 0.22, 0.26))
+					_q(e, "dark", Vector3(cx + 0.1, 0.3, sz - 1.15), Vector3(0.36, 0.6, 0.36))
+					_q(e, "white", Vector3(cx + 0.2, 2.0, sz - 0.03), Vector3(1.5, 0.9, 0.02))
+					solid(Vector3(cx, 0.6, sz - 0.42), Vector3(2.0, 1.2, 0.75))
+				4:
+					for k in 6:
+						_q(e, "panel", Vector3(cx - 0.8, 0.02 + k * 0.045, fz), Vector3(0.6, 0.04, 0.6), Basis(Vector3.UP, (k % 3) * 0.05))
+					_q(e, "tote", Vector3(cx + 0.1, 0.2, fz), Vector3(0.45, 0.4, 0.65))
+					_q(e, "tote", Vector3(cx + 0.1, 0.61, fz), Vector3(0.45, 0.4, 0.65), Basis(Vector3.UP, 0.12))
+					_q(e, "alu", Vector3(cx + 1.0, 1.6, sz - 0.4), Vector3(0.45, 3.3, 0.05), Basis(Vector3.RIGHT, -0.2))
+					_q(e, "alu", Vector3(cx + 0.9, 1.3, sz - 0.5), Vector3(0.4, 2.7, 0.05), Basis(Vector3.RIGHT, -0.24))
+					solid(Vector3(cx + 0.1, 0.5, fz), Vector3(2.4, 1.0, 0.9))
+
+	# what gets left in an aisle on a night shift
+	var n := 2 + rng.randi() % 2
+	for k in n:
+		var side := -1.0 if rng.randf() < 0.5 else 1.0
+		var i := rng.randi_range(i0 + 1, maxi(i0 + 1, i1 - 2))
+		var kind := rng.randi() % 8
+		if i >= GAP0 - 2 and i <= GAP1 + 2:
+			continue
+		if story_aisle and i < 13:
+			continue
+		var z := (i + 0.5) * RACK_W
+		var fx := cx + side * FRONT_X
+		match kind:
+			0:
+				_q(d, "steel", Vector3(fx - side * 0.3, 0.48, z), Vector3(0.5, 0.86, 0.7))
+				_q(d, "dark", Vector3(fx - side * 0.3, 0.93, z), Vector3(0.54, 0.04, 0.74))
+				_q(d, "dark", Vector3(fx - side * 0.16, 1.14, z), Vector3(0.05, 0.3, 0.42))
+				_q(d, "screen", Vector3(fx - side * 0.19, 1.14, z), Vector3(0.01, 0.25, 0.37))
+				solid(Vector3(fx - side * 0.3, 0.6, z), Vector3(0.52, 1.2, 0.72))
+			1:
+				_q(d, "card", Vector3(fx - side * 0.27, 0.2, z), Vector3(0.46, 0.4, 0.52))
+				_q(d, "card", Vector3(fx - side * 0.25, 0.55, z + 0.03), Vector3(0.36, 0.3, 0.4), Basis(Vector3.UP, 0.35))
+				_q(d, "white", Vector3(fx - side * 0.25, 0.701, z + 0.03), Vector3(0.2, 0.004, 0.12), Basis(Vector3.UP, 0.35))
+				solid(Vector3(fx - side * 0.27, 0.36, z), Vector3(0.48, 0.72, 0.54))
+			2:
+				for t: float in [-1.0, 1.0]:
+					_q(d, "alu", Vector3(fx - side * 0.3 + t * 0.16, 0.8, z), Vector3(0.05, 1.64, 0.44), Basis(Vector3.BACK, t * 0.19))
+				_q(d, "yellow", Vector3(fx - side * 0.3, 1.6, z), Vector3(0.2, 0.06, 0.46))
+				solid(Vector3(fx - side * 0.3, 0.8, z), Vector3(0.5, 1.6, 0.46))
+			3:
+				var tx: float = (floor((cx + side * 0.6) / 0.6) + 0.5) * 0.6
+				var tz: float = (floor(z / 0.6) + 0.5) * 0.6
+				_q(d, "void", Vector3(tx, 0.005, tz), Vector3(0.58, 0.01, 0.58))
+				_q(d, "panel", Vector3(fx - side * 0.1, 0.3, tz + 0.75), Vector3(0.04, 0.6, 0.6), Basis(Vector3.BACK, side * 0.2))
+				for c: Vector2 in [Vector2(-0.38, -0.38), Vector2(0.38, 0.38)]:
+					_q(d, "orange", Vector3(tx + c.x, 0.17, tz + c.y), Vector3(0.11, 0.34, 0.11))
+					_q(d, "white", Vector3(tx + c.x, 0.22, tz + c.y), Vector3(0.115, 0.06, 0.115))
+			4:
+				var sy := 0.5 + rng.randf() * 1.0
+				_q(d, "alu", Vector3(fx - side * 0.18, sy, z), Vector3(0.5, 0.085, 0.46))
+				_q(d, "dark", Vector3(fx - side * 0.435, sy, z), Vector3(0.012, 0.07, 0.44))
+				_q(d, "led_a", Vector3(fx - side * 0.445, sy, z - 0.17), Vector3(0.012, 0.02, 0.02))
+			5:
+				_q(d, "cable", Vector3(cx + side * 0.2, 2.4, z), Vector3(0.03, 0.95, 0.03))
+				_q(d, "cable", Vector3(cx + side * 0.65, 1.94, z), Vector3(0.9, 0.03, 0.03))
+				_q(d, "cable", Vector3(fx - side * 0.06, 1.72, z), Vector3(0.03, 0.46, 0.03))
+			6:
+				for t: float in [-1.0, 1.0]:
+					_q(d, "yellow", Vector3(cx + side * 0.62 + t * 0.075, 0.3, z), Vector3(0.02, 0.62, 0.3), Basis(Vector3.BACK, t * 0.24))
+			7:
+				_q(d, "tote", Vector3(fx - side * 0.24, 0.17, z), Vector3(0.42, 0.34, 0.62))
+				_q(d, "tote", Vector3(fx - side * 0.24, 0.52, z), Vector3(0.42, 0.34, 0.62), Basis(Vector3.UP, 0.1))
+				_q(d, "white", Vector3(fx - side * 0.24, 0.7, z), Vector3(0.3, 0.02, 0.4))
+				solid(Vector3(fx - side * 0.24, 0.36, z), Vector3(0.44, 0.72, 0.64))
+
+	_flush(e, bay["e"], layers | shell)
+	_flush(round, bay["e"], layers | shell, true)
+	_flush(d, bay["d"], layers)
+
+
+func _dress_corridor() -> void:
+	var r: Room = rooms["corridor"]
+	var cz := (CORR_Z0 + CORR_Z1) * 0.5
+	var zn := CORR_Z0     # north wall
+	var zs := CORR_Z1     # the wall the hall is behind
+	# things with a place: [x, kind]
+	var items := [
+		[-28.6, "lockers"], [-22.4, "bench"], [-18.4, "vending"], [-16.9, "water"], [-14.0, "board"],
+		[-11.4, "mop"], [-3.2, "ext"], [2.4, "reel"], [9.3, "ext"], [17.8, "ext"],
+		[28.4, "cabinets"], [34.0, "crate"], [37.2, "chairs"], [40.6, "trolley"], [44.2, "boxes"], [47.6, "bins"],
+	]
+	var south := [[0.0, "plan"], [12.5, "ext"], [20.0, "board2"], [27.0, "ext"], [39.76, "plan"]]
+	var x0 := CORR_X0
+	while x0 < CORR_X1:
+		var x1 := minf(CORR_X1, x0 + 14.0)
+		var mid := (x0 + x1) * 0.5
+		var len := x1 - x0
+		var e := {}
+		var round := {}
+		# services on the ceiling, a guide line on the floor
+		_q(e, "blue", Vector3(mid, 3.02, zs - 0.3), Vector3(len, 0.14, 0.14))
+		_q(e, "pipe_r", Vector3(mid, 3.02, zs - 0.52), Vector3(len, 0.14, 0.14))
+		_q(e, "steel", Vector3(mid, 2.96, zn + 0.42), Vector3(len, 0.05, 0.5))
+		_q(e, "cable", Vector3(mid, 3.02, zn + 0.34), Vector3(len, 0.07, 0.1))
+		_q(e, "dark", Vector3(mid, 3.02, zn + 0.52), Vector3(len, 0.07, 0.16))
+		_q(e, "line", Vector3(mid, 0.004, cz + 1.05), Vector3(len, 0.008, 0.1))
+		_q(e, "tote", Vector3(mid, 0.004, cz + 0.9), Vector3(len, 0.008, 0.1))
+		var bx := x0 + 3.5
+		while bx < x1:
+			_q(e, "dark", Vector3(bx, 3.1, cz), Vector3(0.05, 0.3, 2.9))
+			_q(e, "steel", Vector3(bx, 1.64, zs - 0.04), Vector3(0.05, 3.28, 0.05))
+			bx += 7.0
+		for it: Array in items:
+			var x: float = it[0]
+			if x < x0 or x >= x1:
+				continue
+			match it[1]:
+				"lockers":
+					for k in 8:
+						_q(e, "panel" if k % 3 else "steel", Vector3(x + k * 0.5, 0.95, zn + 0.27), Vector3(0.48, 1.9, 0.5))
+						_q(e, "dark", Vector3(x + k * 0.5 + 0.16, 1.1, zn + 0.525), Vector3(0.04, 0.1, 0.01))
+					solid(Vector3(x + 1.75, 0.95, zn + 0.27), Vector3(4.0, 1.9, 0.5))
+				"bench":
+					_q(e, "wood", Vector3(x, 0.45, zn + 0.24), Vector3(1.7, 0.06, 0.42))
+					for sx: float in [-1.0, 1.0]:
+						_q(e, "steel", Vector3(x + sx * 0.7, 0.21, zn + 0.24), Vector3(0.05, 0.42, 0.38))
+					_q(e, "yellow", Vector3(x + 0.4, 0.57, zn + 0.24), Vector3(0.28, 0.17, 0.24))
+					solid(Vector3(x, 0.24, zn + 0.24), Vector3(1.7, 0.48, 0.42))
+				"vending":
+					_q(e, "dark", Vector3(x, 0.95, zn + 0.38), Vector3(0.95, 1.9, 0.75))
+					_q(e, "vend", Vector3(x - 0.12, 1.15, zn + 0.76), Vector3(0.62, 1.2, 0.01))
+					_q(e, "panel", Vector3(x + 0.33, 1.2, zn + 0.76), Vector3(0.2, 0.5, 0.012))
+					solid(Vector3(x, 0.95, zn + 0.38), Vector3(0.95, 1.9, 0.75))
+					omni(r, Vector3(x - 0.1, 1.2, zn + 1.2), Color(0.55, 0.78, 1.0), 0.9, 4.5, r.layers)
+				"water":
+					_q(e, "white", Vector3(x, 0.5, zn + 0.2), Vector3(0.34, 1.0, 0.36))
+					_q(round, "blue", Vector3(x, 1.2, zn + 0.2), Vector3(0.28, 0.4, 0.28))
+					solid(Vector3(x, 0.6, zn + 0.2), Vector3(0.34, 1.2, 0.36))
+				"board":
+					_q(e, "wood", Vector3(x, 1.5, zn + 0.02), Vector3(1.7, 1.0, 0.03))
+					for k in 6:
+						_q(e, "white" if k != 2 else "yellow", Vector3(x - 0.62 + (k % 3) * 0.6, 1.72 - (k / 3) * 0.44, zn + 0.04), Vector3(0.22 + (k % 2) * 0.12, 0.3, 0.005), Basis(Vector3.BACK, (k - 2) * 0.03))
+					sign_text(r, "DAYS SINCE LAST INCIDENT   1123", Vector3(x, 2.12, zn + 0.03), Basis(), 0.0013)
+				"mop":
+					_q(e, "yellow", Vector3(x, 0.22, zn + 0.3), Vector3(0.4, 0.44, 0.55))
+					_q(e, "wood", Vector3(x + 0.05, 0.9, zn + 0.14), Vector3(0.03, 1.5, 0.03), Basis(Vector3.RIGHT, -0.12))
+					for t: float in [-1.0, 1.0]:
+						_q(e, "yellow", Vector3(x + 1.1 + t * 0.075, 0.3, zn + 0.5), Vector3(0.02, 0.62, 0.3), Basis(Vector3.BACK, t * 0.24))
+				"ext":
+					_q(e, "red", Vector3(x, 0.95, zn + 0.1), Vector3(0.15, 0.5, 0.15))
+					_q(e, "red", Vector3(x, 1.6, zn + 0.02), Vector3(0.22, 0.22, 0.02))
+				"reel":
+					_q(round, "red", Vector3(x, 1.3, zn + 0.1), Vector3(0.62, 0.16, 0.62), Basis(Vector3.RIGHT, PI * 0.5))
+					_q(round, "dark", Vector3(x, 1.3, zn + 0.19), Vector3(0.2, 0.03, 0.2), Basis(Vector3.RIGHT, PI * 0.5))
+				"cabinets":
+					for k in 3:
+						_q(e, "steel", Vector3(x + k * 1.1, 1.0, zn + 0.24), Vector3(1.0, 2.0, 0.46))
+						_q(e, "led_g" if k != 1 else "led_a", Vector3(x + k * 1.1 - 0.3, 1.7, zn + 0.475), Vector3(0.04, 0.04, 0.01))
+						_q(e, "yellow", Vector3(x + k * 1.1 + 0.25, 1.45, zn + 0.475), Vector3(0.16, 0.14, 0.006))
+					solid(Vector3(x + 1.1, 1.0, zn + 0.24), Vector3(3.2, 2.0, 0.46))
+				"crate":
+					_q(e, "wood", Vector3(x, 0.07, zn + 0.42), Vector3(1.2, 0.14, 0.8))
+					_q(e, "wood", Vector3(x, 0.6, zn + 0.42), Vector3(1.1, 0.92, 0.7))
+					_q(e, "dark", Vector3(x, 0.6, zn + 0.775), Vector3(0.5, 0.3, 0.005))
+					solid(Vector3(x, 0.55, zn + 0.42), Vector3(1.2, 1.1, 0.8))
+				"chairs":
+					for k in 5:
+						_q(e, "dark", Vector3(x, 0.45 + k * 0.1, zn + 0.3 + k * 0.012), Vector3(0.46, 0.05, 0.46))
+					_q(e, "dark", Vector3(x, 1.0, zn + 0.1), Vector3(0.44, 0.7, 0.05))
+					for c: Vector2 in [Vector2(-0.2, 0.1), Vector2(0.2, 0.1), Vector2(-0.2, 0.5), Vector2(0.2, 0.5)]:
+						_q(e, "alu", Vector3(x + c.x, 0.22, zn + c.y), Vector3(0.03, 0.44, 0.03))
+					solid(Vector3(x, 0.5, zn + 0.3), Vector3(0.5, 1.0, 0.5))
+				"trolley":
+					_q(e, "steel", Vector3(x, 0.5, zn + 0.36), Vector3(1.0, 0.04, 0.6))
+					_q(e, "steel", Vector3(x, 0.14, zn + 0.36), Vector3(1.0, 0.04, 0.6))
+					_q(e, "alu", Vector3(x - 0.1, 0.57, zn + 0.36), Vector3(0.7, 0.09, 0.46))
+					_q(e, "alu", Vector3(x - 0.05, 0.67, zn + 0.36), Vector3(0.7, 0.09, 0.46), Basis(Vector3.UP, 0.06))
+					_q(e, "steel", Vector3(x + 0.5, 0.75, zn + 0.36), Vector3(0.03, 0.6, 0.56))
+					solid(Vector3(x, 0.4, zn + 0.36), Vector3(1.0, 0.8, 0.6))
+				"boxes":
+					_q(e, "card", Vector3(x, 0.25, zn + 0.32), Vector3(0.6, 0.5, 0.6))
+					_q(e, "card", Vector3(x + 0.68, 0.2, zn + 0.28), Vector3(0.55, 0.4, 0.5), Basis(Vector3.UP, 0.1))
+					_q(e, "card", Vector3(x + 0.1, 0.68, zn + 0.3), Vector3(0.45, 0.36, 0.45), Basis(Vector3.UP, -0.2))
+					solid(Vector3(x + 0.3, 0.4, zn + 0.3), Vector3(1.3, 0.8, 0.6))
+				"bins":
+					for k in 3:
+						_q(e, ["green", "tote", "panel"][k], Vector3(x + k * 0.52, 0.42, zn + 0.26), Vector3(0.46, 0.84, 0.46))
+						_q(e, "dark", Vector3(x + k * 0.52, 0.86, zn + 0.26), Vector3(0.48, 0.04, 0.48))
+					solid(Vector3(x + 0.52, 0.44, zn + 0.26), Vector3(1.5, 0.88, 0.46))
+		for it: Array in south:
+			var x: float = it[0]
+			if x < x0 or x >= x1:
+				continue
+			match it[1]:
+				"plan":
+					_q(e, "white", Vector3(x, 1.55, zs - 0.02), Vector3(1.1, 0.75, 0.02))
+					_q(e, "panel", Vector3(x, 1.55, zs - 0.035), Vector3(0.9, 0.5, 0.005))
+					_q(e, "led_g", Vector3(x - 0.3, 1.42, zs - 0.04), Vector3(0.04, 0.04, 0.004))
+					var zone := sign_text(r, "DATA HALL · ZONE %s" % ("A" if x < 20.0 else "B"), Vector3(x, 2.5, zs - 0.02), Basis(Vector3.UP, PI), 0.0046, Color(0.36, 0.38, 0.42))
+					zone.layers = r.layers
+				"ext":
+					_q(e, "red", Vector3(x, 0.95, zs - 0.1), Vector3(0.15, 0.5, 0.15))
+					_q(e, "red", Vector3(x, 1.6, zs - 0.02), Vector3(0.22, 0.22, 0.02))
+				"board2":
+					_q(e, "white", Vector3(x, 1.55, zs - 0.02), Vector3(1.8, 1.0, 0.02))
+					sign_text(r, "NIGHTS: one technician on site.\nCall the operations desk before every task.", Vector3(x, 1.6, zs - 0.035), Basis(Vector3.UP, PI), 0.0012, Color(0.08, 0.08, 0.09))
+		_flush(e, r.extra, r.layers)
+		_flush(round, r.extra, r.layers, true)
+		x0 = x1
+	# hung across the corridor, read from either direction
+	var hung := [
+		[-13.0, "DATA HALL · SECURITY · WAY OUT", "STAFF LOCKERS"],
+		[9.1, "ZONE B · UPS · CHILLER PLANT", "ZONE A · SECURITY · WAY OUT"],
+		[28.0, "ZONE B · CHILLER PLANT", "UPS · MEET-ME ROOM · SECURITY · WAY OUT"],
+	]
+	for hsign: Array in hung:
+		var x: float = hsign[0]
+		prop(r, Vector3(x, 2.62, cz), Vector3(0.04, 0.3, 2.3), _void_mat)
+		var east := sign_text(r, hsign[1], Vector3(x - 0.025, 2.62, cz), Basis(Vector3.UP, -PI * 0.5), 0.0026, Color(0.8, 0.88, 1.0))
+		var west := sign_text(r, hsign[2], Vector3(x + 0.025, 2.62, cz), Basis(Vector3.UP, PI * 0.5), 0.0026, Color(0.8, 0.88, 1.0))
+		east.double_sided = false
+		west.double_sided = false

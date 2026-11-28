@@ -15,8 +15,8 @@ const ACT_CAP := [0.0, 1385.0, 1465.0, 1516.0, 1566.0, 1620.0]
 const ACT_NAME := ["", "HANDOVER", "TICKETS", "OUT OF SYNC", "UNDER THE FLOOR", "CAGE 7"]
 const NOTE_ORDER := ["label", "note1", "note2", "note3"]
 const NOTES := {
-	"label": "[b]ASSET LABEL[/b]  from the failed drive, Hall A K-147\nHALDEN DC-3 · HALL B · ROW P · 07\nHall B has rows A to N.",
-	"note1": "[b]NOTE[/b]  taped inside the CH-2 panel\nIt writes the door log before the doors open. I checked three nights running.\nIt only holds while you go where it says. Use the other door and watch what it does.\nThe tile at the far end of Hall B, between rows I and J, is loose. I left the lifter here.\nDo not jog in there. It hears the tiles.\n  D. Marsh, nights",
+	"label": "[b]ASSET LABEL[/b]  from the failed drive, Zone A K-147\nHALDEN DC-3 · ZONE B · ROW P · 07\nZone B has rows A to N.",
+	"note1": "[b]NOTE[/b]  taped inside the CH-2 panel\nIt writes the door log before the doors open. I checked three nights running.\nIt only holds while you go where it says. Use the other door and watch what it does.\nThe tile at the far end of Zone B, between rows I and J, is loose. I left the lifter here.\nDo not jog in there. It hears the tiles.\n  D. Marsh, nights",
 	"note2": "[b]NOTE[/b]  meet-me room, behind panel 7\nPort 12 is on no patch schedule. Yellow, unlabelled, straight down through the floor.\nClip the fault locator on and it glows the whole way. Open damper P-7 or you will not get past.\nIt ends under a cage that is not on the plan.\n  D. M.",
 	"note3": "[b]BADGE[/b]  on the plenum floor\n0388 · D. MARSH · NIGHTS\nLast entry, three weeks ago: MANTRAP IN. There is no exit entry.\nOn the back, in pen: It does not want you gone. It wants you certain. There is a chair.",
 }
@@ -168,16 +168,16 @@ func _goal() -> Array:
 				"to_security":
 					return ["Security desk: pick up the handheld", u["handheld"].position]
 				"swap":
-					return ["#4471   Hall A · Row K · rack 147", u["rack_a147"].position]
+					return ["#4471   Zone A · Row K · rack 147", u["rack_a147"].position]
 				"return":
 					return ["#4471   Security desk: the RETURNS bin", u["desk_bin"].position]
 		2:
 			match step:
 				"to_hall_b", "pulse", "console":
 					if flags.has("hot"):
-						return ["#4473   Hall B · Row K · rack 07", u["rack_b07"].position]
+						return ["#4473   Zone B · Row K · rack 07", u["rack_b07"].position]
 					if not tickets.is_empty() and tickets[-1]["id"] == "4472":
-						return ["#4472   Hall B · Row P · rack 07", null]
+						return ["#4472   Zone B · Row P · rack 07", null]
 				"ups":
 					return ["#4474   UPS room: breaker B2", u["breaker_b2"].position]
 				"to_desk2":
@@ -185,9 +185,9 @@ func _goal() -> Array:
 		3:
 			match step:
 				"fire_panel":
-					return ["#4475   Hall A, far end: fire panel FP-A", u["fire_panel_a"].position]
+					return ["#4475   Zone A, far end: fire panel FP-A", u["fire_panel_a"].position]
 				"abort":
-					return ["GAS ABORT   Hall A, corridor end, between the doors", u["abort_a"].position]
+					return ["GAS ABORT   Zone A, corridor end, between the doors", u["abort_a"].position]
 				"chiller":
 					if not tickets.is_empty() and tickets[-1]["id"] == "4476":
 						return ["#4476   Chiller plant: restart CH-2", u["chiller2"].position]
@@ -199,7 +199,7 @@ func _goal() -> Array:
 			if not flags.has("fibre"):
 				if room == "mmr":
 					return ["Meet-me room: panel 7, port 12", u["panel7"].position]
-				return ["Hall B, far end, rows I and J: the loose tile", u["hatch_b"].position]
+				return ["Zone B, far end, rows I and J: the loose tile", u["hatch_b"].position]
 			if not flags.has("damper"):
 				return ["Meet-me room: damper P-7", u["damper"].position]
 			return ["Under the floor: follow the lit fibre", u["hatch_mmr"].position]
@@ -335,7 +335,7 @@ func prompt_for(id: String) -> String:
 		"hatch_b":
 			return "Lift the loose floor tile" if act >= 4 else ""
 		"hatch_h_up":
-			return "Climb up into Hall B"
+			return "Climb up into Zone B"
 		"hatch_m":
 			return "Climb up into the meet-me room"
 		"hatch_c":
@@ -351,7 +351,7 @@ func prompt_for(id: String) -> String:
 		"cage_gate":
 			return "Unbolt the mesh panel" if act >= 5 and not flags.has("gate") and kit.in_cage(game.player.global_position) else ""
 		"epo_b":
-			return "" if flags.has("epo") else "Emergency power off · Hall B"
+			return "" if flags.has("epo") else "Emergency power off · Zone B"
 		"dock_shutter":
 			return "Raise the shutter"
 	return ""
@@ -366,9 +366,9 @@ func on_use(id: String) -> void:
 			(kit.props["handheld"] as Node3D).visible = false
 			game.sound.play("tone")
 			_handheld_hints()
-			_say_later(16.0, "Housekeeping. Hall A-2 is the door straight across the corridor from the security office. Row K is one aisle to your right once you are inside. The row letters hang over every aisle. You should not need Hall B tonight.")
+			_say_later(16.0, "Housekeeping. Zone A-2 is the door straight across the corridor from the security office. Row K is one aisle to your right once you are inside. The row letters hang over every aisle. You should not need Zone B tonight.")
 			ops("Evening, 0417. Operations desk here, remote as always. You are the only one on site tonight. One ticket in the queue, should be a quiet shift.")
-			ticket("4471", "Failed drive, Hall A", "Hall A · Row K · rack 147, drive bay 3. Swap it for the spare and bring the dead one back to RETURNS at the security desk. Row K is in the aisle between the two doors, near the corridor end. It is showing an amber fault light.")
+			ticket("4471", "Failed drive, Zone A", "Zone A · Row K · rack 147, drive bay 3. Swap it for the spare and bring the dead one back to RETURNS at the security desk. Row K is in the aisle between the two doors, near the corridor end. It is showing an amber fault light.")
 			step = "swap"
 		"rack_a147":
 			_swap_drive()
@@ -608,14 +608,14 @@ func _restore(n: int) -> void:
 	for d: String in DOOR_IDS:
 		kit.doors[d].shut()
 	var past := [
-		[1318.0, "STAFF GATE"], [1321.0, "MANTRAP"], [1323.0, "SECURITY DESK"], [1331.0, "HALL A-1"], [1352.0, "SECURITY DESK"],
-		[1396.0, "HALL B-1"], [1421.0, "HALL B-2"], [1425.0, "UPS ROOM"], [1440.0, "SECURITY DESK"],
-		[1481.0, "HALL A-1"], [1498.0, "HALL A-2"], [1502.0, "CHILLER PLANT"],
+		[1318.0, "STAFF GATE"], [1321.0, "MANTRAP"], [1323.0, "SECURITY DESK"], [1331.0, "ZONE A-1"], [1352.0, "SECURITY DESK"],
+		[1396.0, "ZONE B-1"], [1421.0, "ZONE B-2"], [1425.0, "UPS ROOM"], [1440.0, "SECURITY DESK"],
+		[1481.0, "ZONE A-1"], [1498.0, "ZONE A-2"], [1502.0, "CHILLER PLANT"],
 	]
 	var upto: int = [0, 0, 5, 9, 12, 12][n]
 	for i in upto:
 		_log(_line(past[i][1]), "real" if i < 6 else "true", past[i][0])
-	var old := [["4471", "Failed drive, Hall A"], ["4472", "Link down, Hall B P-07"], ["4473", "High temperature, Hall B"],
+	var old := [["4471", "Failed drive, Zone A"], ["4472", "Link down, Zone B P-07"], ["4473", "High temperature, Zone B"],
 		["4474", "Breaker B2, UPS room"], ["4475", "Fire panel FP-A"], ["4476", "Chiller CH-2 tripped"]]
 	var closed: int = [0, 0, 1, 4, 6, 6][n]
 	for i in closed:
@@ -634,16 +634,16 @@ func _act2() -> void:
 	grant(["hall_b1", "hall_b2"])
 	if not await _wait(3.0):
 		return
-	ticket("4472", "Link down, Hall B P-07", "Hall B · Row P · rack 07: link down on port 47. Reseat the fibre.")
+	ticket("4472", "Link down, Zone B P-07", "Zone B · Row P · rack 07: link down on port 47. Reseat the fibre.")
 	if not await _wait(7.0):
 		return
-	ops("Row P? Hall B stops at row N on my plan. Do not go looking for it. Same row as the label on that dead drive, though. Leave it with me.")
+	ops("Row P? Zone B stops at row N on my plan. Do not go looking for it. Same row as the label on that dead drive, though. Leave it with me.")
 	if not await _wait(9.0):
 		return
 	game.sound.play("chime", -6.0)
 	flags["hot"] = true
 	_beacon(true)
-	ticket("4473", "High temperature, Hall B", "HIGH TEMP alarm, Hall B. Plug your console cable into Row K · rack 07 and read what it says. Row K is in the aisle between the two doors, a few racks in from the corridor end. The rack is showing an amber fault light.")
+	ticket("4473", "High temperature, Zone B", "HIGH TEMP alarm, Zone B. Plug your console cable into Row K · rack 07 and read what it says. Row K is in the aisle between the two doors, a few racks in from the corridor end. The rack is showing an amber fault light.")
 
 
 func _act3() -> void:
@@ -659,11 +659,11 @@ func _act4() -> void:
 	game.sound.play("breaker", -3.0, 0.7)
 	if not await _wait(4.0):
 		return
-	ops("Your badge just dropped off every zone except Hall B. I did not do that. And I have lost you on the cameras.")
+	ops("Your badge just dropped off every zone except Zone B. I did not do that. And I have lost you on the cameras.")
 	predict("hall_b2", 6.0, ["hall_b1"])
 	if not await _wait(10.0):
 		return
-	ops("There is a line in your log for Hall B, east door. Six minutes from now. I would like to know who is writing those.")
+	ops("There is a line in your log for Zone B, east door. Six minutes from now. I would like to know who is writing those.")
 	if not await _wait(28.0):
 		return
 	_ops_at("Good shift, 0417. Badge logged out at the mantrap. Get some sleep.", 1591.0)
@@ -695,7 +695,7 @@ func _swap_drive() -> void:
 	(kit.props["fault_light"] as Node3D).visible = false
 	add_note("label")
 	step = "return"
-	game.toast("The new drive spins up. The dead one has an asset label for Hall B, row P. It is in your notes.", 8.0)
+	game.toast("The new drive spins up. The dead one has an asset label for Zone B, row P. It is in your notes.", 8.0)
 	_say_later(13.0, "Marsh had your shift until three weeks ago. Stopped coming in, never handed the badge back. The agency took a while to find you.")
 	if await _wait(6.0):
 		ops("Rebuild has started. Drop the dead drive in RETURNS at the security desk and I will close the ticket.")
@@ -735,7 +735,7 @@ func _pulse_event() -> void:
 
 
 func _console_b() -> void:
-	var title := "CONSOLE · hb-k07 · Hall B row K rack 07"
+	var title := "CONSOLE · hb-k07 · Zone B row K rack 07"
 	if act != 2 or flags.has("b_cleared"):
 		game.terminal.show_screen(title, "hb-k07-con> show status\n  inlet temp     21.3 C\n  fans           6/6\n  alarms         none\n  port 47        hb-p07   up   [CAGE 7]")
 		return
@@ -751,7 +751,7 @@ func _console_b_menu(text: String) -> void:
 	]
 	if flags.has("console_b"):
 		choices.append(["clear the temperature alarm", _console_b_clear])
-	game.terminal.show_screen("CONSOLE · hb-k07 · Hall B row K rack 07", text, choices)
+	game.terminal.show_screen("CONSOLE · hb-k07 · Zone B row K rack 07", text, choices)
 
 
 func _console_b_status() -> void:
@@ -786,7 +786,7 @@ func _console_b_clear() -> void:
 	close_ticket("4472")
 	grant(["ups"])
 	step = "ups"
-	game.terminal.show_screen("CONSOLE · hb-k07 · Hall B row K rack 07", "hb-k07-con> clear alarm\n  HIGH TEMP cleared.\n  note: alarm source hb-p07 is not in inventory. Nothing was hot.")
+	game.terminal.show_screen("CONSOLE · hb-k07 · Zone B row K rack 07", "hb-k07-con> clear alarm\n  HIGH TEMP cleared.\n  note: alarm source hb-p07 is not in inventory. Nothing was hot.")
 	ticket("4474", "Breaker B2, UPS room", "UPS room, panel B: breaker B2 has tripped. Reset it by hand. Your badge has the UPS room for tonight.")
 
 
@@ -812,7 +812,7 @@ func _use_cctv() -> void:
 
 
 func _watch_cameras() -> void:
-	# camera 4 shows a technician with a torch in Hall B. The badge on the overlay is yours.
+	# camera 4 shows a technician with a torch in Zone B. The badge on the overlay is yours.
 	var mine := _gen
 	game.cctv.open()
 	game.show_all_rooms(true)
@@ -854,7 +854,7 @@ func on_cctv_closed() -> void:
 	if act == 3 and step == "cctv" and flags.has("cams_done"):
 		step = "fire_panel"
 		game.sound.play("chime", -6.0)
-		ticket("4475", "Fire panel FP-A", "Fire panel FP-A reports a fault. It is on the south wall at the far end of Hall A. Acknowledge it at the panel.")
+		ticket("4475", "Fire panel FP-A", "Fire panel FP-A reports a fault. It is on the south wall at the far end of Zone A. Acknowledge it at the panel.")
 		predict("hall_a1", 5.0, ["hall_a2"])
 
 
@@ -957,7 +957,7 @@ func _epo() -> void:
 	game.figure.active = false
 	_refresh_doors()
 	if await _wait(6.0):
-		game.toast("Hall B is dark. For the first time tonight, the building is quiet. The mantrap has no power. The loading dock has a hand chain.", 10.0)
+		game.toast("Zone B is dark. For the first time tonight, the building is quiet. The mantrap has no power. The loading dock has a hand chain.", 10.0)
 
 
 func _ending(kind: String) -> void:
@@ -973,7 +973,7 @@ func _ending(kind: String) -> void:
 				"[color=#ffb347]02:31  MANTRAP OUT[/color]",
 				"You leave at the logged time. Nothing is recorded. You drive home and you sleep.",
 				"",
-				"[color=#ffb347]21:58  STAFF GATE      GRANTED\n22:01  MANTRAP         GRANTED\n22:03  SECURITY DESK   GRANTED\n22:11  HALL A-1        GRANTED[/color]",
+				"[color=#ffb347]21:58  STAFF GATE      GRANTED\n22:01  MANTRAP         GRANTED\n22:03  SECURITY DESK   GRANTED\n22:11  ZONE A-1        GRANTED[/color]",
 				"",
 				"Tomorrow night is already written.",
 				"ENDING 1 OF 3 · COMPLY",
@@ -1149,7 +1149,7 @@ func opening_shots() -> Array:
 	var bx := Kit.HALL_B_X
 	return [
 		{"from": Vector3(-24.0, 7.2, 1.0), "to": Vector3(-17.0, 6.2, 6.0), "look": Vector3(-2.0, 1.5, 46.0), "secs": 8.0,
-			"text": "Halden DC-3. Two data halls, forty thousand machines and, after ten at night, one person."},
+			"text": "Halden DC-3. One data hall, forty thousand machines and, after ten at night, one person."},
 		{"from": Vector3(0, 1.5, 0.6), "to": Vector3(0, 1.5, 7.5), "look": Vector3(0, 1.25, 40), "secs": 6.0,
 			"text": "It takes a minute to walk one aisle end to end. There are fourteen aisles."},
 		{"from": Vector3(bx, 1.6, 27.5), "to": Vector3(bx, 1.6, 22.0), "look": Vector3(bx, 1.2, -2.0), "secs": 7.0,
@@ -1178,12 +1178,12 @@ func act_shots(n: Variant) -> Array:
 					"text": "01:20. CH-2 restarts. Then, from the far end of the corridor, the lights go out one at a time.",
 					"start": _shot_corridor_on, "tick": _shot_corridor},
 				{"from": Vector3(bx, 1.5, -1.6), "to": Vector3(bx, 1.5, 2.6), "look": Vector3(bx, 1.2, 20), "secs": 6.5,
-					"text": "Your badge is down to four doors. Every one of them is on the way to Hall B."},
+					"text": "Your badge is down to four doors. Every one of them is on the way to Zone B."},
 			]
 		5:
 			return [
 				{"from": Vector3(bx + 5.44, 1.75, cz - 12.7), "to": Vector3(bx + 5.44, 1.6, cz - 7.4), "look": Vector3(bx + 5.3, 1.1, cz), "secs": 7.0,
-					"text": "02:10. Hall B, row P. A cage that is on no plan, running for one thousand one hundred and twenty-three days."},
+					"text": "02:10. Zone B, row P. A cage that is on no plan, running for one thousand one hundred and twenty-three days."},
 				{"from": Vector3(bx + 7.3, 1.6, cz + 2.4), "to": Vector3(bx + 6.9, 1.45, cz + 1.4), "look": Vector3(bx + 5.2, 1.0, cz), "secs": 6.0,
 					"text": "One console. One chair. Somebody has been sitting in it."},
 			]
@@ -1207,7 +1207,7 @@ func ending_shots(kind: String) -> Array:
 				{"from": Vector3(-5.6, 1.55, -7.2), "to": Vector3(-5.6, 1.4, -8.6), "look": Vector3(-5.6, 1.35, -11.9), "secs": 8.0,
 					"text": "The hand chain is cold. The shutter goes up one arm's length at a time.", "tick": _shot_shutter},
 				{"from": Vector3(bx, 1.5, 1.0), "to": Vector3(bx, 1.5, -1.2), "look": Vector3(bx, 1.2, 20), "secs": 6.0,
-					"text": "Behind you, Hall B is dark. Nothing in it is predicting anything."},
+					"text": "Behind you, Zone B is dark. Nothing in it is predicting anything."},
 			]
 		"stay":
 			return [
@@ -1436,7 +1436,7 @@ func walktest() -> void:
 		print("  door %-14s %s  (%.2f m past)" % [id, "ok" if through > 1.0 else "BLOCKED", through])
 		if through <= 1.0:
 			bad += 1
-	# the crawl: Hall B hatch to the meet-me room, then on through the damper to Cage 7
+	# the crawl: Zone B hatch to the meet-me room, then on through the damper to Cage 7
 	kit.set_damper(true)
 	var marks := {}
 	for row in Kit.PLENUM_MAP.size():

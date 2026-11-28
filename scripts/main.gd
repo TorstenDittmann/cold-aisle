@@ -397,7 +397,7 @@ func _warm_up() -> void:
 
 
 func _show_title() -> void:
-	# the title sits over a slow drift down Hall A
+	# the title sits over a slow drift down Zone A
 	var n: int = story.has_save()
 	_title_info.text = "CLICK   begin the night shift" + ("\nC       continue · Act %d · %s" % [n, story.ACT_NAME[n]] if n > 0 else "")
 	_title.visible = true

@@ -1,5 +1,5 @@
 extends Node3D
-## The figure in Hall B. It is never lit: it is drawn in flat black, so all you see of it
+## The figure in Zone B. It is never lit: it is drawn in flat black, so all you see of it
 ## is the rack LEDs it blocks. It walks the cold aisles and the two cross corridors, and is
 ## drawn to torchlight and to jogging footsteps. It cannot follow you into a hot aisle.
 

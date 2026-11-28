@@ -141,7 +141,7 @@ func refresh() -> void:
 				else:
 					t += "[color=%s]#%s  closed   %s[/color]\n\n" % [DIM, tk["id"], tk["title"]]
 		1:
-			t = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n[color=%s]HALDEN DC-3 · GROUND FLOOR\nHall A rows A to N · Hall B rows A to N[/color]" % DIM
+			t = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n[color=%s]HALDEN DC-3 · GROUND FLOOR\nZone A rows A to N · Zone B rows A to N[/color]" % DIM
 		2:
 			if not st.flags.has("log"):
 				t = "[color=%s]DOOR LOG\nNo access. Ask the operations desk.[/color]" % DIM
@@ -196,7 +196,7 @@ func _draw_plan() -> void:
 		var rr := Rect2(off + r.position * s, r.size * s)
 		_plan.draw_rect(rr, line, false, 1.0)
 		var name: String = {"dock": "DOCK", "mantrap": "", "security": "DESK", "mmr": "MMR", "ups": "UPS",
-			"corridor": "", "hall_a": "HALL A", "hall_b": "HALL B", "chillers": "CH"}[id]
+			"corridor": "", "hall_a": "ZONE A", "hall_b": "ZONE B", "chillers": "CH"}[id]
 		_plan.draw_string(font, rr.position + Vector2(3, 11), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, line)
 	for id: String in kit.doors:
 		var d: Node3D = kit.doors[id]
