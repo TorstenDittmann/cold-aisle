@@ -16,6 +16,9 @@ var _bed := ""
 var _pool: Array[AudioStreamPlayer] = []
 var _next := 0
 var _alarm: AudioStreamPlayer
+var _deep: AudioStreamPlayer   # a recorded room tone under the machine halls
+var _deep_lv := 0.0
+var _far_t := 12.0             # until the next sound from somewhere else in the building
 var _static: AudioStreamPlayer
 
 
@@ -30,6 +33,7 @@ func _ready() -> void:
 		_beds[name] = _looper(name)
 		_level[name] = 0.0
 	_alarm = _looper("alarm")
+	_deep = _looper("bed_deep")
 	_static = _looper("static")
 	for i in 10:
 		var p := AudioStreamPlayer.new()
@@ -66,7 +70,7 @@ func play(name: String, db := 0.0, pitch := 1.0) -> void:
 
 
 func step(perforated: bool, jogging: bool, crouching: bool) -> void:
-	var name := ("step_p%d" if perforated else "step_s%d") % (randi() % 3)
+	var name := "step_p%d" % (randi() % 3) if perforated else "step_s%d" % (randi() % 5)
 	play(name, -4.0 if jogging else (-22.0 if crouching else -12.0), randf_range(0.94, 1.06))
 
 
@@ -91,6 +95,21 @@ func static_noise(on: bool) -> void:
 
 
 func _process(delta: float) -> void:
+	# under the fans, the building itself: a low recorded tone in the big rooms, and now
+	# and then something metal moving a long way off
+	var big := _bed != "bed_room" and _bed != "" and not silenced
+	_deep_lv = move_toward(_deep_lv, 1.0 if big else 0.0, delta * 0.4)
+	if _deep_lv > 0.001:
+		if not _deep.playing:
+			_deep.play()
+		_deep.volume_db = -15.0 + linear_to_db(_deep_lv * (1.0 - duck * 0.5))
+	elif _deep.playing:
+		_deep.stop()
+	if _bed != "":
+		_far_t -= delta
+		if _far_t <= 0.0:
+			_far_t = randf_range(16.0, 44.0)
+			play("far%d" % (randi() % 6), randf_range(-27.0, -19.0) + (6.0 if silenced else 0.0), randf_range(0.6, 0.95))
 	for name: String in BEDS:
 		var p: AudioStreamPlayer = _beds[name]
 		var want := 1.0 if (name == _bed and not silenced) else 0.0

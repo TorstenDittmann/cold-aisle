@@ -118,6 +118,7 @@ func act(id: String, at: Vector3) -> void:
 	_left.rotation = Vector3.ZERO
 	_hold_item({"plug": "cable", "drop": "drive"}.get(kind, ""))
 	pl.face(at, 0.4, 0.0 if kind in ["lift", "climb"] else 0.22)
+	game.sound.play("cloth%d" % (randi() % 2), -16.0, randf_range(0.9, 1.1))
 	var reach := Vector3(0.13, -0.17, -0.5)
 	var tilt := Vector3(0.12, 0.2, 0.0)
 	match kind:
@@ -132,6 +133,9 @@ func act(id: String, at: Vector3) -> void:
 		_move(_left, reach * side + Vector3(0, 0, 0.04), 0.46, tilt * Vector3(1, -1, 1))
 	await get_tree().create_timer(0.45).timeout
 	hold = false
+	var snd: Array = {"press": ["switch", -6.0], "plug": ["click_m", -4.0], "pull": ["latch", -8.0], "take": ["paper", -10.0], "drop": ["click_m", -8.0], "swap": ["click_m", -6.0], "lift": ["hatch", -5.0], "climb": ["cloth0", -10.0]}[kind]
+	if not (kind == "take" and id == "handheld"):
+		game.sound.play(snd[0], snd[1], randf_range(0.95, 1.05))
 	game.story.on_use(id)
 	match kind:
 		"press":

@@ -153,6 +153,7 @@ func build(game: Node, world_node: Node3D) -> void:
 	_build_hall("b", HALL_B_X, 4, true)
 	_build_chillers()
 	_build_plenum()
+	_build_cameras()
 	_finish_mirrors()
 
 
@@ -538,11 +539,37 @@ func _build_small_rooms() -> void:
 	_plain(sec)
 	lamp(sec, 5.0, -8.6, 4.0, 8.0)
 	block(sec, Vector3(5.0, 0.4, -11.2), Vector3(3.4, 0.8, 0.9), grey)
-	var screen := glow_mat(Color(0.25, 0.4, 0.34), 1.2)
+	# the camera wall: six monitors on a frame, each showing a feed, and the desk that runs them
+	var bezel := mat(Color(0.03, 0.03, 0.035), 0.4, 0.3)
+	var mon_shader: Shader = load("res://shaders/monitor.gdshader")
 	for i in 6:
 		var sx := 4.2 + (i % 3) * 0.8
 		var sy := 1.55 + int(i / 3) * 0.55
-		prop(sec, Vector3(sx, sy, -11.93), Vector3(0.7, 0.46, 0.05), screen)
+		prop(sec, Vector3(sx, sy, -11.9), Vector3(0.76, 0.5, 0.07), bezel)
+		var sm := ShaderMaterial.new()
+		sm.shader = mon_shader
+		sm.set_shader_parameter("seed", float(i) * 1.37 + 0.5)
+		var sq := QuadMesh.new()
+		sq.size = Vector2(0.69, 0.43)
+		var smi := MeshInstance3D.new()
+		smi.mesh = sq
+		smi.material_override = sm
+		smi.position = Vector3(sx, sy, -11.862)
+		smi.layers = sec.layers
+		sec.extra.add_child(smi)
+		prop(sec, Vector3(sx + 0.3, sy - 0.232, -11.86), Vector3(0.02, 0.012, 0.01), glow_mat(Color(0.1, 1.0, 0.35), 2.0))
+	for sx: float in [3.8, 4.6, 5.4, 6.2]:
+		prop(sec, Vector3(sx, 1.55, -11.95), Vector3(0.06, 1.5, 0.06), steel)
+	prop(sec, Vector3(5.0, 1.27, -11.95), Vector3(2.5, 0.05, 0.05), steel)
+	prop(sec, Vector3(5.0, 2.37, -11.95), Vector3(2.5, 0.05, 0.05), steel)
+	omni(sec, Vector3(5.0, 1.7, -11.3), Color(0.55, 1.0, 0.8), 0.7, 3.5, sec.layers)
+	prop(sec, Vector3(5.0, 0.815, -11.0), Vector3(0.46, 0.025, 0.16), bezel)
+	prop(sec, Vector3(5.5, 0.83, -11.0), Vector3(0.2, 0.06, 0.2), bezel)
+	prop(sec, Vector3(5.5, 0.92, -11.0), Vector3(0.03, 0.14, 0.03), steel)
+	prop(sec, Vector3(6.2, 0.87, -11.3), Vector3(0.5, 0.13, 0.36), bezel)
+	for k in 4:
+		prop(sec, Vector3(6.02 + k * 0.05, 0.87, -11.115), Vector3(0.015, 0.015, 0.01), glow_mat(Color(0.1, 1.0, 0.35) if k != 2 else AMBER, 2.5))
+	prop(sec, Vector3(4.35, 0.85, -11.05), Vector3(0.08, 0.1, 0.08), mat(Color(0.6, 0.6, 0.58), 0.6))
 	usable("cctv", Vector3(5.0, 1.75, -11.7), Vector3(2.6, 1.3, 0.5))
 	props["handheld"] = prop(sec, Vector3(3.8, 0.83, -11.0), Vector3(0.1, 0.03, 0.18), glow_mat(Color(0.5, 0.6, 0.7), 1.5))
 	usable("handheld", Vector3(3.8, 0.9, -11.0), Vector3(0.5, 0.3, 0.5))
@@ -1894,3 +1921,69 @@ func _dress_corridor() -> void:
 	var hang := prop(r, Vector3(-24.6, CEIL_Y - 0.28, cz + 0.3), Vector3(1.2, 0.06, 0.14), _lamp_off)
 	hang.rotation = Vector3(0.0, 0.5, 0.36)
 	prop(r, Vector3(-24.1, CEIL_Y - 0.25, cz + 0.05), Vector3(0.04, 0.5, 0.04), _m("dark"))
+
+
+## Security cameras: the six that feed the desk, and more that watch the hall. Each is a
+## white housing with a hood, a dark lens, a status light and a bracket to the wall above.
+func _build_cameras() -> void:
+	var cams := [
+		[Vector3(-8.7, 3.0, -11.7), Vector3(-4.5, 0.6, -8.0)],
+		[Vector3(-8.7, 3.0, -4.3), Vector3(8.0, 0.4, -4.3)],
+		[Vector3(0.0, 3.1, -2.3), Vector3(0.0, 0.4, 11.0)],
+		[Vector3(HALL_B_X, 3.1, -2.3), Vector3(HALL_B_X, 0.4, 11.0)],
+		[Vector3(18.5, 3.0, -11.7), Vector3(23.0, 0.6, -8.5)],
+		[Vector3(17.7, 3.0, -6.3), Vector3(12.5, 0.6, -10.5)],
+	]
+	# and ones that are not on the desk's wall: someone else is watching those
+	for hall: String in ["a", "b"]:
+		var ox: float = halls[hall]["ox"]
+		for a: int in [1, 3]:
+			cams.append([Vector3(aisle_x(hall, a), 3.1, -2.3), Vector3(aisle_x(hall, a), 0.4, 11.0)])
+		cams.append([Vector3(ox - 2.5 * AISLE_PITCH, 3.3, HALL_Z1 - 0.35), Vector3(ox, 0.3, AISLE_LEN)])
+		cams.append([Vector3(ox + 0.5 * AISLE_PITCH, 3.3, HALL_Z1 - 0.35), Vector3(ox - AISLE_PITCH, 0.3, AISLE_LEN)])
+	cams.append([Vector3(CORR_X1 - 0.4, 3.0, -4.3), Vector3(30.0, 0.4, -4.3)])
+	var white := mat(Color(0.62, 0.63, 0.62), 0.5, 0.1)
+	var dark := mat(Color(0.02, 0.02, 0.025), 0.15, 0.6)
+	var red := glow_mat(Color(1.0, 0.1, 0.06), 3.0)
+	var lens_mesh := CylinderMesh.new()
+	lens_mesh.top_radius = 0.042
+	lens_mesh.bottom_radius = 0.042
+	lens_mesh.height = 0.05
+	lens_mesh.radial_segments = 10
+	lens_mesh.rings = 1
+	lens_mesh.material = dark
+	for c: Array in cams:
+		var eye: Vector3 = c[0]
+		var look: Vector3 = c[1]
+		var id := room_at(eye)
+		if id == "":
+			continue
+		var r: Room = rooms[id]
+		var layers := r.layers
+		if id.begins_with("hall_"):
+			layers |= int(halls[id.trim_prefix("hall_")]["all"])
+		var n := Node3D.new()
+		r.extra.add_child(n)
+		# sits just above the point the feed is taken from, so it never sees itself
+		n.position = eye + Vector3(0, 0.2, 0)
+		n.look_at_from_position(n.position, look + Vector3(0, 0.2, 0))
+		box_in(n, Vector3(0, 0, 0.04), Vector3(0.12, 0.11, 0.3), white, layers)
+		box_in(n, Vector3(0, 0.065, -0.03), Vector3(0.15, 0.02, 0.4), white, layers)
+		box_in(n, Vector3(0, -0.01, -0.112), Vector3(0.1, 0.08, 0.01), dark, layers)
+		var lens := MeshInstance3D.new()
+		lens.mesh = lens_mesh
+		lens.rotation.x = PI * 0.5
+		lens.position = Vector3(0, -0.005, -0.13)
+		lens.layers = layers
+		n.add_child(lens)
+		box_in(n, Vector3(0.04, -0.035, -0.118), Vector3(0.014, 0.014, 0.01), red, layers)
+		box_in(n, Vector3(0, 0.0, 0.2), Vector3(0.03, 0.03, 0.12), dark, layers)
+		# the bracket: an arm back and a plate, kept upright whatever way the camera points
+		var arm := Node3D.new()
+		r.extra.add_child(arm)
+		var back := -(look - eye)
+		back.y = 0.0
+		back = back.normalized()
+		arm.position = n.position
+		box_in(arm, back * 0.2 + Vector3(0, 0.07, 0), Vector3(0.05, 0.05, 0.05) + Vector3(absf(back.x), 0, absf(back.z)) * 0.3, white, layers)
+		box_in(arm, back * 0.36 + Vector3(0, 0.07, 0), Vector3(0.16, 0.16, 0.16) - Vector3(absf(back.x), 0, absf(back.z)) * 0.13, white, layers)

@@ -116,7 +116,7 @@ func _process(delta: float) -> void:
 		_hold -= delta
 		if _hold <= 0.0 and game.player.global_position.distance_to(global_position) > 1.5:
 			_target = 0.0
-			game.sound.play("door", -8.0, 0.9)
+			game.sound.play("door_close", -9.0)
 	if _flash > 0.0:
 		_flash -= delta
 		if _flash <= 0.0:
@@ -156,7 +156,7 @@ func badge() -> void:
 
 func open_now(hold := 3.5) -> void:
 	if _target < 1.0:
-		game.sound.play("door", -5.0)
+		game.sound.play("door", -7.0)
 	_target = 1.0
 	_hold = hold
 
