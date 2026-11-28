@@ -100,7 +100,9 @@ void fragment() {
 	em *= 1.0 - dead * (1.0 - cage);
 	em = mix(em, vec3(0.1, 0.9, 0.78) * dot(em, vec3(0.4)), cage);
 	// teal light bar on the door edge, with a slow idle wave and the story pulse
-	float inbar = step(0.272, u) * step(u, 0.298) * step(0.1, v) * step(v, 2.02);
+	// by coverage, so that far away the bar dims instead of breaking into dashes
+	float pu = max(fwidth(u), 0.0002);
+	float inbar = clamp((0.013 - abs(u - 0.285)) / pu + 0.5, 0.0, 1.0) * min(1.0, 0.026 / pu) * step(0.1, v) * step(v, 2.02);
 	float wave = 0.25 + 0.2 * sin(wz * 0.9 - TIME * 1.3);
 	float d = wz - pulse_z;
 	float pulse = pulse_gain * exp(-d * d * 1.6);

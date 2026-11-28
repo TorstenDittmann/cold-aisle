@@ -82,7 +82,7 @@ func _arm(side: float) -> Node3D:
 
 
 func wants(id: String) -> bool:
-	return KINDS.has(id) and not busy
+	return KINDS.has(id) and not busy and not (id == "damper_pull" and not game.story.flags.has("fibre"))
 
 
 func _hold_item(id: String) -> void:

@@ -1023,7 +1023,7 @@ func _rack_label(r: Room, cx: float, side: float, z: float, text: String, layers
 	var facing := Basis(Vector3.UP, -side * PI * 0.5)
 	var sticker := MeshInstance3D.new()
 	var quad := QuadMesh.new()
-	quad.size = Vector2(0.2, 0.042)
+	quad.size = Vector2(0.27, 0.046)
 	sticker.mesh = quad
 	sticker.material_override = mat(Color(0.62, 0.62, 0.58), 0.9)
 	sticker.layers = layers
@@ -1140,9 +1140,9 @@ func _build_chillers() -> void:
 		if not ok:
 			props["chiller_led"] = lm
 		sign_text(r, "CH-%d" % (i + 1), Vector3(33.08 + dx, 2.1, z), Basis(Vector3.UP, -PI * 0.5), 0.002)
-	for x: float in [29.0, 29.5]:
+	for x: float in [28.25, 28.7]:
 		box(r, Vector3(x + dx, 2.8, 3.7), Vector3(0.22, 0.22, 12.4), pipe)
-	box(r, Vector3(32.0 + dx, 2.8, 8.9), Vector3(6.0, 0.22, 0.22), pipe)
+	box(r, Vector3(31.6 + dx, 2.8, 8.9), Vector3(6.8, 0.22, 0.22), pipe)
 	usable("chiller2", Vector3(33.0 + dx, 1.5, 2.8), Vector3(0.4, 0.9, 0.7))
 	props["note1"] = prop(r, Vector3(33.08 + dx, 1.3, 4.4), Vector3(0.01, 0.22, 0.16), mat(Color(0.7, 0.68, 0.6), 0.9))
 	usable("note1", Vector3(33.0 + dx, 1.3, 4.4), Vector3(0.3, 0.5, 0.4))
@@ -1716,6 +1716,16 @@ func _dress_bay(r: Room, h: Dictionary, a: int, bay: Dictionary, i0: int, i1: in
 	_flush(d, bay["d"], layers)
 
 
+## True when x is within `clear` metres of a door that opens onto the corridor.
+func _by_door(x: float, clear: float) -> bool:
+	for id: String in doors:
+		var d: Node3D = doors[id]
+		if absf(d.position.z - ROOM_Z1) < 0.5 or absf(d.position.z + END_PAD) < 0.5:
+			if absf(d.position.x - x) < clear:
+				return true
+	return false
+
+
 func _dress_corridor() -> void:
 	var r: Room = rooms["corridor"]
 	var cz := (CORR_Z0 + CORR_Z1) * 0.5
@@ -1736,15 +1746,16 @@ func _dress_corridor() -> void:
 		var e := {}
 		var round := {}
 		# services on the ceiling, a guide line on the floor
-		_q(e, "blue", Vector3(mid, 3.02, zs - 0.3), Vector3(len, 0.18, 0.18))
-		_q(e, "pipe_r", Vector3(mid, 3.02, zs - 0.52), Vector3(len, 0.18, 0.18))
+		_q(e, "blue", Vector3(mid, 3.17, zs - 0.3), Vector3(len, 0.18, 0.18))
+		_q(e, "pipe_r", Vector3(mid, 3.17, zs - 0.52), Vector3(len, 0.18, 0.18))
 		_q(e, "steel", Vector3(mid, 2.96, zn + 0.42), Vector3(len, 0.05, 0.5))
 		_q(e, "cable", Vector3(mid, 3.03, zn + 0.34), Vector3(len, 0.1, 0.14))
 		_q(e, "dark", Vector3(mid, 3.03, zn + 0.54), Vector3(len, 0.1, 0.18))
 		var bx := x0 + 3.5
 		while bx < x1:
 			_q(e, "dark", Vector3(bx, 3.1, cz), Vector3(0.1, 0.3, 2.9))
-			_q(e, "steel", Vector3(bx, 1.64, zs - 0.05), Vector3(0.09, 3.28, 0.09))
+			if not _by_door(bx, 1.4):
+				_q(e, "steel", Vector3(bx, 1.64, zs - 0.05), Vector3(0.09, 3.28, 0.09))
 			bx += 7.0
 		# wear: scuffs at trolley height, damp on the ceiling, a tile gone and its cables hanging
 		var wear := RandomNumberGenerator.new()
@@ -1752,11 +1763,17 @@ func _dress_corridor() -> void:
 		for k in 5:
 			var wx := wear.randf_range(x0 + 0.5, x1 - 0.5)
 			var south_side := wear.randf() < 0.5
+			if _by_door(wx, 1.7):
+				continue
 			_q(e, "dark", Vector3(wx, wear.randf_range(0.25, 0.95), (zs - 0.004) if south_side else (zn + 0.004)), Vector3(wear.randf_range(0.5, 1.8), wear.randf_range(0.03, 0.09), 0.012))
 		var cx2 := wear.randf_range(x0 + 2.0, x1 - 2.0)
 		_q(e, "wood", Vector3(cx2, CEIL_Y - 0.004, cz + wear.randf_range(-0.6, 0.6)), Vector3(wear.randf_range(0.6, 1.3), 0.012, wear.randf_range(0.5, 1.0)), Basis(Vector3.UP, wear.randf()))
+		while _by_door(cx2, 1.5):
+			cx2 += 0.8
 		if int(x0 - CORR_X0) % 28 < 14:
 			var gx := wear.randf_range(x0 + 3.0, x1 - 3.0)
+			while _by_door(gx, 2.0):
+				gx += 0.8
 			_q(e, "void", Vector3(gx, CEIL_Y - 0.005, cz - 0.5), Vector3(0.6, 0.02, 0.6))
 			_q(e, "cable", Vector3(gx + 0.1, CEIL_Y - 0.3, cz - 0.4), Vector3(0.05, 0.6, 0.05), Basis(Vector3.BACK, 0.12))
 			_q(e, "dark", Vector3(gx - 0.12, CEIL_Y - 0.22, cz - 0.6), Vector3(0.05, 0.45, 0.05), Basis(Vector3.RIGHT, 0.2))
@@ -1862,15 +1879,15 @@ func _dress_corridor() -> void:
 		x0 = x1
 	# hung across the corridor, read from either direction
 	var hung := [
-		[-13.0, "DATA HALL · SECURITY · WAY OUT", "STAFF LOCKERS"],
-		[9.1, "ZONE B · UPS · CHILLER PLANT", "ZONE A · SECURITY · WAY OUT"],
-		[28.0, "ZONE B · CHILLER PLANT", "UPS · MEET-ME ROOM · SECURITY · WAY OUT"],
+		[-13.0, "DATA HALL · WAY OUT", "STAFF LOCKERS"],
+		[9.1, "ZONE B · UPS · PLANT", "ZONE A · WAY OUT"],
+		[28.0, "ZONE B · PLANT", "UPS · SECURITY · WAY OUT"],
 	]
 	for hsign: Array in hung:
 		var x: float = hsign[0]
-		prop(r, Vector3(x, 2.62, cz), Vector3(0.04, 0.3, 2.3), _void_mat)
-		var east := sign_text(r, hsign[1], Vector3(x - 0.025, 2.62, cz), Basis(Vector3.UP, -PI * 0.5), 0.0026, Color(0.8, 0.88, 1.0))
-		var west := sign_text(r, hsign[2], Vector3(x + 0.025, 2.62, cz), Basis(Vector3.UP, PI * 0.5), 0.0026, Color(0.8, 0.88, 1.0))
+		prop(r, Vector3(x, 2.62, cz), Vector3(0.04, 0.34, 2.5), _void_mat)
+		var east := sign_text(r, hsign[1], Vector3(x - 0.025, 2.62, cz), Basis(Vector3.UP, -PI * 0.5), minf(0.003, 2.3 / (String(hsign[1]).length() * 28.8)), Color(0.8, 0.88, 1.0))
+		var west := sign_text(r, hsign[2], Vector3(x + 0.025, 2.62, cz), Basis(Vector3.UP, PI * 0.5), minf(0.003, 2.3 / (String(hsign[2]).length() * 28.8)), Color(0.8, 0.88, 1.0))
 		east.double_sided = false
 		west.double_sided = false
 	# one fitting has dropped at one end and nobody has put it back

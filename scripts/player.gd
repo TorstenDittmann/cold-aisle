@@ -58,7 +58,9 @@ func _ready() -> void:
 	torch.spot_angle = 34.0
 	torch.spot_angle_attenuation = 1.6
 	torch.spot_attenuation = 0.7
-	torch.shadow_enabled = true
+	# no shadow: the lamp sits at the eye, so its shadows hide behind what casts them, and
+	# a browser's coarse shadow depth draws black bands across far walls instead
+	torch.shadow_enabled = false
 	torch.position = Vector3(0.18, -0.16, -0.1)
 	torch.visible = false
 	camera.add_child(torch)

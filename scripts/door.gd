@@ -77,8 +77,8 @@ func build(kit: RefCounted, door_id: String, door_title: String, pos: Vector3, a
 		label.text = title
 		label.font = font
 		label.font_size = 48
-		label.pixel_size = 0.0013
-		label.modulate = Color(0.75, 0.78, 0.82)
+		label.pixel_size = minf(0.0029, 0.94 / (maxi(title.length(), 1) * 28.8))
+		label.modulate = Color(0.92, 0.94, 0.97)
 		label.outline_size = 0
 		label.shaded = false
 		label.layers = layers
@@ -87,8 +87,19 @@ func build(kit: RefCounted, door_id: String, door_title: String, pos: Vector3, a
 			facing = Basis() if s > 0 else Basis(Vector3.UP, PI)
 		else:
 			facing = Basis(Vector3.UP, PI * 0.5 * s)
-		label.transform = Transform3D(facing, normal * s * 0.11 + Vector3(0, 2.3, 0))
+		label.transform = Transform3D(facing, normal * s * 0.128 + Vector3(0, 2.36, 0))
 		add_child(label)
+		# the plate it is printed on: dark blue with a pale edge, the same on every door
+		for plate: Array in [[Vector3(1.12, 0.3, 0.012), Color(0.55, 0.58, 0.62), 0.104], [Vector3(1.07, 0.25, 0.012), Color(0.03, 0.07, 0.17), 0.112]]:
+			var pm := BoxMesh.new()
+			var ps: Vector3 = plate[0]
+			pm.size = ps if along_x else Vector3(ps.z, ps.y, ps.x)
+			var pi := MeshInstance3D.new()
+			pi.mesh = pm
+			pi.material_override = kit.glow_mat(plate[1], 0.9)
+			pi.position = normal * s * float(plate[2]) + Vector3(0, 2.36, 0)
+			pi.layers = layers
+			add_child(pi)
 
 
 func DOOR_W() -> float:

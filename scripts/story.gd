@@ -197,7 +197,7 @@ func _goal() -> Array:
 			if room == "plenum":
 				if flags.has("fibre") and not flags.has("damper"):
 					return ["Follow the lit fibre to damper P-7 and pull its release", u["damper_pull"].position]
-				return ["Follow the lit fibre" if flags.has("fibre") else "Under the floor: find the way up", null]
+				return ["Follow the lit fibre" if flags.has("fibre") else "Under the floor: find the hatch up to the meet-me room", null if flags.has("fibre") else u["hatch_m"].position]
 			if not flags.has("fibre"):
 				if room == "mmr":
 					return ["Meet-me room: panel 7, port 12", u["panel7"].position]
@@ -347,7 +347,9 @@ func prompt_for(id: String) -> String:
 		"damper":
 			return "Close damper P-7" if flags.has("damper") else "Open damper P-7"
 		"damper_pull":
-			return "" if flags.has("damper") else "Pull the damper release"
+			if flags.has("damper"):
+				return ""
+			return "Pull the damper release" if flags.has("fibre") else "Damper P-7 release"
 		"console7":
 			return "Use the console" if act >= 5 else ""
 		"cage_gate":
@@ -434,6 +436,11 @@ func on_use(id: String) -> void:
 			game.sound.play("beep")
 			game.toast("Port 12 lights up red. Under the floor, one fibre is glowing.")
 		"damper_pull":
+			if not flags.has("fibre"):
+				# the way on stays shut until the meet-me room has been found
+				game.sound.play("tick", -4.0, 0.7)
+				game.toast("The release will not move. A tag on it reads: INTERLOCKED · MEET-ME ROOM · PANEL 7.", 7.0)
+				return
 			flags["damper"] = true
 			kit.set_damper(true)
 			game.sound.play("breaker", -6.0, 1.3)
